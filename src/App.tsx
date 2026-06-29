@@ -190,6 +190,12 @@ function sortRows(rows: AvailabilityRow[]) {
   return [...rows].sort((a, b) => a.slot_time.localeCompare(b.slot_time) || a.user_name.localeCompare(b.user_name));
 }
 
+function getAvailabilityClassNames(availableUsers: UserName[]) {
+  if (availableUsers.length === 0) return 'empty';
+
+  return availableUsers.map((userName) => `available-${userName.toLowerCase()}`).join(' ');
+}
+
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
     const saved = window.localStorage.getItem('availability-user');
@@ -596,24 +602,18 @@ export default function App() {
                       : false;
                     const overlapClass = availableUsers.length > 1 ? 'overlap' : '';
                     const mineClass = isMine ? 'mine' : '';
+                    const availabilityClass = getAvailabilityClassNames(availableUsers);
 
                     return (
                       <button
                         aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
-                        className={`slot-cell ${overlapClass} ${mineClass}`}
+                        className={`slot-cell ${availabilityClass} ${overlapClass} ${mineClass}`}
                         data-slot-key={slot.key}
                         key={slot.key}
                         onPointerDown={(event) => handleSlotPointerDown(event, slot)}
                         onPointerEnter={() => handleSlotPointerEnter(slot)}
                         type="button"
-                      >
-                        <span className="availability-bars" aria-hidden="true">
-                          {PEOPLE.map((person) => {
-                            const isAvailable = availableUsers.includes(person.name);
-                            return <span className={`bar ${person.color} ${isAvailable ? 'on' : ''}`} key={person.name} />;
-                          })}
-                        </span>
-                      </button>
+                      />
                     );
                   })}
                 </div>
