@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, Clock, CloudOff, RefreshCw, RotateCcw, Save, Users } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, CloudOff, RefreshCw, RotateCcw, Save, Users } from 'lucide-react';
 import { AvailabilityRow, isSupabaseConfigured, supabase } from './supabase';
 
 type UserName = 'Jaiden' | 'Hansol' | 'Jieun';
@@ -65,6 +65,7 @@ const PEOPLE: Person[] = [
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
+const TOTAL_WEEKS = 16;
 const TIME_WINDOWS: TimeWindow[] = [
   { id: 'main', label: '07-23', startHour: 7, endHour: 23 },
   { id: 'morning', label: '00-12', startHour: 0, endHour: 12 },
@@ -161,8 +162,9 @@ function formatTimezoneLabel(timeZone: string, date = new Date()) {
   return timeZoneName.replace('GMT', 'UTC');
 }
 
-function buildSlots(timeZone: string) {
-  const start = getViewerWeekStart(timeZone);
+function buildSlots(timeZone: string, weekOffset: number) {
+  const currentWeekStart = getViewerWeekStart(timeZone);
+  const start = addLocalDays(currentWeekStart.year, currentWeekStart.month, currentWeekStart.day, weekOffset * 7);
   const slots: Slot[] = [];
   const dayDates = Array.from({ length: 7 }, (_, dayIndex) => {
     const date = addLocalDays(start.year, start.month, start.day, dayIndex);
@@ -235,12 +237,13 @@ export default function App() {
     isSupabaseConfigured ? 'loading' : 'offline',
   );
   const [errorMessage, setErrorMessage] = useState('');
+  const [weekOffset, setWeekOffset] = useState(0);
   const [timeWindowId, setTimeWindowId] = useState<TimeWindowId>('main');
   const [draftAvailableSlots, setDraftAvailableSlots] = useState<Set<string>>(() => new Set());
   const [dirtySlotTimes, setDirtySlotTimes] = useState<Set<string>>(() => new Set());
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const dragState = useRef<DragState | null>(null);
-  const draftUser = useRef<UserName | null>(null);
+  const draftScope = useRef('');
 
   const selectedPerson = useMemo(
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
@@ -248,8 +251,8 @@ export default function App() {
   );
 
   const { slots, dayDates } = useMemo(
-    () => buildSlots(selectedPerson?.timezone ?? PEOPLE[0].timezone),
-    [selectedPerson?.timezone],
+    () => buildSlots(selectedPerson?.timezone ?? PEOPLE[0].timezone, weekOffset),
+    [selectedPerson?.timezone, weekOffset],
   );
 
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
@@ -272,6 +275,8 @@ export default function App() {
     () => formatWeekRange(slots, selectedPerson?.timezone ?? PEOPLE[0].timezone),
     [selectedPerson?.timezone, slots],
   );
+  const weekLabel = `Week ${weekOffset + 1}`;
+  const draftScopeKey = `${selectedUser ?? 'none'}-${weekOffset}`;
   const timezoneLabel = useMemo(() => {
     if (!selectedPerson) return '';
     return `${selectedPerson.standardLabel} ${formatTimezoneLabel(selectedPerson.timezone, new Date(slots[0]?.iso ?? Date.now()))}`;
@@ -322,18 +327,19 @@ export default function App() {
   useEffect(() => {
     if (!selectedUser) return;
 
-    const userChanged = draftUser.current !== selectedUser;
+    const scopeChanged = draftScope.current !== draftScopeKey;
+    const shouldSyncRemote = dirtySlotTimes.size === 0 && saveState !== 'saved';
 
-    if (userChanged || dirtySlotTimes.size === 0) {
-      draftUser.current = selectedUser;
+    if (scopeChanged || shouldSyncRemote) {
+      draftScope.current = draftScopeKey;
       setDraftAvailableSlots(new Set(remoteSelectedAvailableSlots));
       setDirtySlotTimes(new Set());
 
-      if (userChanged) {
+      if (scopeChanged) {
         setSaveState('idle');
       }
     }
-  }, [dirtySlotTimes.size, remoteSelectedAvailableSlots, selectedUser]);
+  }, [dirtySlotTimes.size, draftScopeKey, remoteSelectedAvailableSlots, saveState, selectedUser]);
 
   useEffect(() => {
     const stopDragging = () => {
@@ -602,6 +608,16 @@ export default function App() {
     applyDragToSlot(slot);
   };
 
+  const goToPreviousWeek = () => {
+    if (unsavedCount > 0 || saveState === 'saving') return;
+    setWeekOffset((current) => Math.max(0, current - 1));
+  };
+
+  const goToNextWeek = () => {
+    if (unsavedCount > 0 || saveState === 'saving') return;
+    setWeekOffset((current) => Math.min(TOTAL_WEEKS - 1, current + 1));
+  };
+
   return (
     <main className="app-shell">
       {!selectedUser && (
@@ -637,12 +653,34 @@ export default function App() {
             <div>
               <div className="eyebrow">
                 <CalendarDays size={16} />
-                {weekRange}
+                {weekLabel} · {weekRange}
               </div>
               <h1>Weekly Availability</h1>
             </div>
 
             <div className="header-actions">
+              <div className="week-pager" aria-label="Week navigation">
+                <button
+                  aria-label="Previous week"
+                  disabled={weekOffset === 0 || unsavedCount > 0 || saveState === 'saving'}
+                  onClick={goToPreviousWeek}
+                  type="button"
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span>
+                  {weekLabel} / {TOTAL_WEEKS}
+                </span>
+                <button
+                  aria-label="Next week"
+                  disabled={weekOffset === TOTAL_WEEKS - 1 || unsavedCount > 0 || saveState === 'saving'}
+                  onClick={goToNextWeek}
+                  type="button"
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+
               <div className={`sync-state ${status}`}>
                 {status === 'loading' ? <RefreshCw size={15} className="spin" /> : <Clock size={15} />}
                 <span>

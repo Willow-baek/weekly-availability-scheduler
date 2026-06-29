@@ -93,6 +93,44 @@ h1 {
   gap: 12px;
 }
 
+.week-pager {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-radius: 999px;
+  display: inline-flex;
+  min-height: 34px;
+  overflow: hidden;
+}
+
+.week-pager button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #3c3834;
+  cursor: pointer;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 36px;
+}
+
+.week-pager button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.week-pager span {
+  border-left: 1px solid #ebe5dd;
+  border-right: 1px solid #ebe5dd;
+  color: #4c4742;
+  font-size: 0.9rem;
+  font-weight: 700;
+  min-width: 92px;
+  padding: 7px 12px;
+  text-align: center;
+}
+
 .sync-state {
   align-items: center;
   background: #ffffff;
@@ -533,6 +571,15 @@ h1 {
 
   .header-actions {
     align-items: stretch;
+  }
+
+  .week-pager,
+  .sync-state {
+    width: 100%;
+  }
+
+  .week-pager span {
+    flex: 1;
   }
 
   .person-picker.compact {
