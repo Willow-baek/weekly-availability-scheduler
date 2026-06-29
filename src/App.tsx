@@ -186,11 +186,28 @@ function buildSlots(timeZone: string, weekOffset: number) {
 }
 
 function makeAvailabilityKey(userName: string, slotTime: string) {
-  return `${userName}::${slotTime}`;
+  return `${userName}::${normalizeSlotTime(slotTime)}`;
+}
+
+function normalizeSlotTime(slotTime: string) {
+  return new Date(slotTime).toISOString();
+}
+
+function normalizeAvailabilityRow(row: AvailabilityRow): AvailabilityRow {
+  return {
+    ...row,
+    slot_time: normalizeSlotTime(row.slot_time),
+  };
+}
+
+function normalizeAvailabilityRows(rows: AvailabilityRow[]) {
+  return rows.map(normalizeAvailabilityRow);
 }
 
 function sortRows(rows: AvailabilityRow[]) {
-  return [...rows].sort((a, b) => a.slot_time.localeCompare(b.slot_time) || a.user_name.localeCompare(b.user_name));
+  return normalizeAvailabilityRows(rows).sort(
+    (a, b) => a.slot_time.localeCompare(b.slot_time) || a.user_name.localeCompare(b.user_name),
+  );
 }
 
 function getAvailabilityClassNames(availableUsers: UserName[]) {
@@ -383,8 +400,8 @@ export default function App() {
           table: 'availability',
         },
         (payload) => {
-          const nextRow = payload.new as AvailabilityRow | null;
-          const oldRow = payload.old as AvailabilityRow | null;
+          const nextRow = payload.new ? normalizeAvailabilityRow(payload.new as AvailabilityRow) : null;
+          const oldRow = payload.old ? normalizeAvailabilityRow(payload.old as AvailabilityRow) : null;
           const relevantSlot = nextRow?.slot_time ?? oldRow?.slot_time;
 
           if (relevantSlot && !slotSet.has(relevantSlot)) {
@@ -497,7 +514,7 @@ export default function App() {
     setRows((current) => {
       const nextRows = new Map(current.map((row) => [makeAvailabilityKey(row.user_name, row.slot_time), row]));
 
-      for (const row of rowsToSave) {
+      for (const row of normalizeAvailabilityRows(rowsToSave)) {
         nextRows.set(makeAvailabilityKey(row.user_name, row.slot_time), row);
       }
 
