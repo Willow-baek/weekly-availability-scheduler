@@ -1,4 +1,7 @@
 :root {
+  --jaiden-color: #3f6fd8;
+  --hansol-color: #12836d;
+  --jieun-color: #d16b32;
   color: #202325;
   background: #f6f3ee;
   font-family:
@@ -243,22 +246,22 @@ h1 {
 
 .person-chip.blue[aria-pressed="true"],
 .person-button.blue:hover {
-  background: #2367c9;
-  border-color: #2367c9;
+  background: var(--jaiden-color);
+  border-color: var(--jaiden-color);
   color: #ffffff;
 }
 
 .person-chip.green[aria-pressed="true"],
 .person-button.green:hover {
-  background: #278c55;
-  border-color: #278c55;
+  background: var(--hansol-color);
+  border-color: var(--hansol-color);
   color: #ffffff;
 }
 
 .person-chip.orange[aria-pressed="true"],
 .person-button.orange:hover {
-  background: #dc7d22;
-  border-color: #dc7d22;
+  background: var(--jieun-color);
+  border-color: var(--jieun-color);
   color: #ffffff;
 }
 
@@ -334,15 +337,15 @@ h1 {
 }
 
 .dot.blue {
-  background: #2367c9;
+  background: var(--jaiden-color);
 }
 
 .dot.green {
-  background: #278c55;
+  background: var(--hansol-color);
 }
 
 .dot.orange {
-  background: #dc7d22;
+  background: var(--jieun-color);
 }
 
 .dot.overlap {
@@ -514,31 +517,36 @@ h1 {
 }
 
 .slot-cell.available-jaiden {
-  background: #2367c9;
+  background: var(--jaiden-color);
 }
 
 .slot-cell.available-hansol {
-  background: #278c55;
+  background: var(--hansol-color);
 }
 
 .slot-cell.available-jieun {
-  background: #dc7d22;
+  background: var(--jieun-color);
 }
 
 .slot-cell.available-jaiden.available-hansol {
-  background: linear-gradient(90deg, #2367c9 0 50%, #278c55 50% 100%);
+  background: linear-gradient(90deg, var(--jaiden-color) 0 50%, var(--hansol-color) 50% 100%);
 }
 
 .slot-cell.available-jaiden.available-jieun {
-  background: linear-gradient(90deg, #2367c9 0 50%, #dc7d22 50% 100%);
+  background: linear-gradient(90deg, var(--jaiden-color) 0 50%, var(--jieun-color) 50% 100%);
 }
 
 .slot-cell.available-hansol.available-jieun {
-  background: linear-gradient(90deg, #278c55 0 50%, #dc7d22 50% 100%);
+  background: linear-gradient(90deg, var(--hansol-color) 0 50%, var(--jieun-color) 50% 100%);
 }
 
 .slot-cell.available-jaiden.available-hansol.available-jieun {
-  background: linear-gradient(90deg, #2367c9 0 33.33%, #278c55 33.33% 66.66%, #dc7d22 66.66% 100%);
+  background: linear-gradient(
+    90deg,
+    var(--jaiden-color) 0 33.33%,
+    var(--hansol-color) 33.33% 66.66%,
+    var(--jieun-color) 66.66% 100%
+  );
 }
 
 .slot-cell.overlap {

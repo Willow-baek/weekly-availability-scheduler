@@ -723,7 +723,14 @@ export default function App() {
 
           <section className="controls-row" aria-label="Scheduler controls">
             <div className="control-side left">
-              <button className="secondary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={resetDraft} type="button">
+              <button
+                aria-label="Discard unsaved changes"
+                className="secondary-action"
+                disabled={unsavedCount === 0 || saveState === 'saving'}
+                onClick={resetDraft}
+                title="Discard unsaved changes"
+                type="button"
+              >
                 <RotateCcw size={15} />
                 Reset
               </button>
