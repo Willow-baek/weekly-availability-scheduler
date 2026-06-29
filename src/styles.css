@@ -1,7 +1,7 @@
 :root {
-  --jaiden-color: #3f6fd8;
-  --hansol-color: #12836d;
-  --jieun-color: #d16b32;
+  --jaiden-color: #008080;
+  --hansol-color: #f6edbd;
+  --jieun-color: #ca562c;
   color: #202325;
   background: #f6f3ee;
   font-family:
@@ -255,7 +255,7 @@ h1 {
 .person-button.green:hover {
   background: var(--hansol-color);
   border-color: var(--hansol-color);
-  color: #ffffff;
+  color: #312f25;
 }
 
 .person-chip.orange[aria-pressed="true"],
@@ -267,6 +267,10 @@ h1 {
 
 .person-button:hover small {
   color: rgba(255, 255, 255, 0.82);
+}
+
+.person-button.green:hover small {
+  color: rgba(49, 47, 37, 0.72);
 }
 
 .notice,
@@ -346,13 +350,6 @@ h1 {
 
 .dot.orange {
   background: var(--jieun-color);
-}
-
-.dot.overlap {
-  background:
-    repeating-linear-gradient(135deg, #272b2f 0 4px, #ffffff 4px 7px),
-    #272b2f;
-  border: 1px solid #272b2f;
 }
 
 .controls-row {
@@ -487,13 +484,24 @@ h1 {
 
 .slot-cell {
   align-items: center;
-  background: #ffffff;
   border: 0;
   cursor: crosshair;
   display: flex;
   justify-content: center;
   min-height: 20px;
   padding: 0;
+  --slot-empty: #ffffff;
+  --jaiden-segment: var(--slot-empty);
+  --hansol-segment: var(--slot-empty);
+  --jieun-segment: var(--slot-empty);
+  background:
+    linear-gradient(90deg, transparent 0 calc(33.33% - 1px), rgba(235, 229, 221, 0.9) calc(33.33% - 1px) 33.33%, transparent 33.33% calc(66.66% - 1px), rgba(235, 229, 221, 0.9) calc(66.66% - 1px) 66.66%, transparent 66.66% 100%),
+    linear-gradient(
+      90deg,
+      var(--jaiden-segment) 0 33.33%,
+      var(--hansol-segment) 33.33% 66.66%,
+      var(--jieun-segment) 66.66% 100%
+    );
   transition:
     background 120ms ease,
     box-shadow 120ms ease,
@@ -505,58 +513,31 @@ h1 {
 }
 
 .hour-cell:nth-child(odd) .slot-cell.empty {
-  background: #fdfbf8;
+  --slot-empty: #fdfbf8;
 }
 
 .slot-cell:hover {
-  box-shadow: inset 0 0 0 2px #272b2f;
+  box-shadow: inset 0 0 0 1px #272b2f;
 }
 
 .slot-cell.empty.mine {
-  background: #fbfaf7;
+  --slot-empty: #fbfaf7;
 }
 
 .slot-cell.available-jaiden {
-  background: var(--jaiden-color);
+  --jaiden-segment: var(--jaiden-color);
 }
 
 .slot-cell.available-hansol {
-  background: var(--hansol-color);
+  --hansol-segment: var(--hansol-color);
 }
 
 .slot-cell.available-jieun {
-  background: var(--jieun-color);
-}
-
-.slot-cell.available-jaiden.available-hansol {
-  background: linear-gradient(90deg, var(--jaiden-color) 0 50%, var(--hansol-color) 50% 100%);
-}
-
-.slot-cell.available-jaiden.available-jieun {
-  background: linear-gradient(90deg, var(--jaiden-color) 0 50%, var(--jieun-color) 50% 100%);
-}
-
-.slot-cell.available-hansol.available-jieun {
-  background: linear-gradient(90deg, var(--hansol-color) 0 50%, var(--jieun-color) 50% 100%);
-}
-
-.slot-cell.available-jaiden.available-hansol.available-jieun {
-  background: linear-gradient(
-    90deg,
-    var(--jaiden-color) 0 33.33%,
-    var(--hansol-color) 33.33% 66.66%,
-    var(--jieun-color) 66.66% 100%
-  );
-}
-
-.slot-cell.overlap {
-  box-shadow:
-    inset 0 0 0 1px rgba(32, 35, 37, 0.2),
-    inset 0 -5px 0 rgba(32, 35, 37, 0.22);
+  --jieun-segment: var(--jieun-color);
 }
 
 .slot-cell.mine:not(.empty) {
-  box-shadow: inset 0 0 0 2px #202325;
+  box-shadow: inset 0 0 0 1px rgba(32, 35, 37, 0.45);
 }
 
 @media (max-width: 860px) {

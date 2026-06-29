@@ -714,10 +714,6 @@ export default function App() {
                   {person.name}
                 </span>
               ))}
-              <span className="legend-item">
-                <span className="dot overlap" />
-                Overlap
-              </span>
             </div>
           </section>
 
@@ -790,14 +786,13 @@ export default function App() {
                         {halfHourSlots.map((slot) => {
                           const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
                           const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
-                          const overlapClass = availableUsers.length > 1 ? 'overlap' : '';
                           const mineClass = isMine ? 'mine' : '';
                           const availabilityClass = getAvailabilityClassNames(availableUsers);
 
                           return (
                             <button
                               aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
-                              className={`half-slot slot-cell ${availabilityClass} ${overlapClass} ${mineClass}`}
+                              className={`half-slot slot-cell ${availabilityClass} ${mineClass}`}
                               data-slot-key={slot.key}
                               key={slot.key}
                               onPointerDown={(event) => handleSlotPointerDown(event, slot)}
