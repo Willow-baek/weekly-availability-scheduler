@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Check, Clock, CloudOff, RefreshCw, Users } from 'lucide-react';
 import { AvailabilityRow, isSupabaseConfigured, supabase } from './supabase';
 
@@ -17,9 +17,16 @@ type Slot = {
   iso: string;
   dayIndex: number;
   dayOfWeek: number;
+  slotIndex: number;
   localLabel: string;
   hour: number;
   minute: number;
+};
+
+type DragState = {
+  isAvailable: boolean;
+  lastSlot: Slot;
+  touchedSlotTimes: Set<string>;
 };
 
 const PEOPLE: Person[] = [
@@ -164,6 +171,7 @@ function buildSlots(timeZone: string) {
         iso: utc.toISOString(),
         dayIndex,
         dayOfWeek: dayIndex + 1,
+        slotIndex,
         localLabel: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
         hour,
         minute,
@@ -192,7 +200,7 @@ export default function App() {
     isSupabaseConfigured ? 'loading' : 'offline',
   );
   const [errorMessage, setErrorMessage] = useState('');
-  const dragMode = useRef<boolean | null>(null);
+  const dragState = useRef<DragState | null>(null);
 
   const selectedPerson = useMemo(
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
@@ -205,6 +213,7 @@ export default function App() {
   );
 
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
+  const slotByGridKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
   const weekRange = useMemo(
     () => formatWeekRange(slots, selectedPerson?.timezone ?? PEOPLE[0].timezone),
     [selectedPerson?.timezone, slots],
@@ -247,7 +256,7 @@ export default function App() {
 
   useEffect(() => {
     const stopDragging = () => {
-      dragMode.current = null;
+      dragState.current = null;
     };
 
     window.addEventListener('pointerup', stopDragging);
@@ -341,28 +350,34 @@ export default function App() {
     };
   }, [slotSet]);
 
-  const updateAvailability = useCallback(
-    async (slot: Slot, isAvailable: boolean) => {
+  const updateAvailabilitySlots = useCallback(
+    async (targetSlots: Slot[], isAvailable: boolean) => {
       if (!selectedUser) return;
+      const uniqueSlots = Array.from(new Map(targetSlots.map((slot) => [slot.iso, slot])).values());
+      if (uniqueSlots.length === 0) return;
 
-      const optimisticRow: AvailabilityRow = {
+      const optimisticRows: AvailabilityRow[] = uniqueSlots.map((slot) => ({
         user_name: selectedUser,
         day_of_week: slot.dayOfWeek,
         slot_time: slot.iso,
         is_available: isAvailable,
-      };
+      }));
 
       setRows((current) => {
-        const rowKey = makeAvailabilityKey(selectedUser, slot.iso);
-        const withoutRow = current.filter((row) => makeAvailabilityKey(row.user_name, row.slot_time) !== rowKey);
-        return sortRows([...withoutRow, optimisticRow]);
+        const nextRows = new Map(current.map((row) => [makeAvailabilityKey(row.user_name, row.slot_time), row]));
+
+        for (const row of optimisticRows) {
+          nextRows.set(makeAvailabilityKey(row.user_name, row.slot_time), row);
+        }
+
+        return sortRows([...nextRows.values()]);
       });
 
       if (!supabase) {
         return;
       }
 
-      const { error } = await supabase.from('availability').upsert(optimisticRow, {
+      const { error } = await supabase.from('availability').upsert(optimisticRows, {
         onConflict: 'user_name,slot_time',
       });
 
@@ -374,18 +389,85 @@ export default function App() {
     [selectedUser],
   );
 
-  const handleSlotPointerDown = (slot: Slot) => {
+  const getSlotsBetween = useCallback(
+    (fromSlot: Slot, toSlot: Slot) => {
+      if (fromSlot.dayIndex !== toSlot.dayIndex) {
+        return [toSlot];
+      }
+
+      const start = Math.min(fromSlot.slotIndex, toSlot.slotIndex);
+      const end = Math.max(fromSlot.slotIndex, toSlot.slotIndex);
+      const range: Slot[] = [];
+
+      for (let slotIndex = start; slotIndex <= end; slotIndex += 1) {
+        const slot = slotByGridKey.get(`${toSlot.dayIndex}-${slotIndex}`);
+        if (slot) {
+          range.push(slot);
+        }
+      }
+
+      return range;
+    },
+    [slotByGridKey],
+  );
+
+  const applyDragToSlot = useCallback(
+    (slot: Slot) => {
+      const state = dragState.current;
+      if (!state) return;
+
+      const rangeSlots = getSlotsBetween(state.lastSlot, slot).filter((rangeSlot) => !state.touchedSlotTimes.has(rangeSlot.iso));
+      if (rangeSlots.length === 0) return;
+
+      for (const rangeSlot of rangeSlots) {
+        state.touchedSlotTimes.add(rangeSlot.iso);
+      }
+
+      state.lastSlot = slot;
+      void updateAvailabilitySlots(rangeSlots, state.isAvailable);
+    },
+    [getSlotsBetween, updateAvailabilitySlots],
+  );
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!dragState.current) return;
+
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      const slotElement = element?.closest<HTMLElement>('[data-slot-key]');
+      const slotKey = slotElement?.dataset.slotKey;
+      const slot = slotKey ? slotByGridKey.get(slotKey) : null;
+
+      if (slot) {
+        applyDragToSlot(slot);
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+    };
+  }, [applyDragToSlot, slotByGridKey]);
+
+  const handleSlotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot) => {
     if (!selectedUser) return;
 
+    event.preventDefault();
     const current = availability.get(makeAvailabilityKey(selectedUser, slot.iso))?.is_available ?? false;
     const next = !current;
-    dragMode.current = next;
-    void updateAvailability(slot, next);
+    dragState.current = {
+      isAvailable: next,
+      lastSlot: slot,
+      touchedSlotTimes: new Set([slot.iso]),
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    void updateAvailabilitySlots([slot], next);
   };
 
   const handleSlotPointerEnter = (slot: Slot) => {
-    if (dragMode.current === null) return;
-    void updateAvailability(slot, dragMode.current);
+    applyDragToSlot(slot);
   };
 
   return (
@@ -519,8 +601,9 @@ export default function App() {
                       <button
                         aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
                         className={`slot-cell ${overlapClass} ${mineClass}`}
+                        data-slot-key={slot.key}
                         key={slot.key}
-                        onPointerDown={() => handleSlotPointerDown(slot)}
+                        onPointerDown={(event) => handleSlotPointerDown(event, slot)}
                         onPointerEnter={() => handleSlotPointerEnter(slot)}
                         type="button"
                       >
