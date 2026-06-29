@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, CloudOff, RefreshCw, RotateCcw, Save, Users } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, CloudOff, RefreshCw, RotateCcw, Save, Undo2, Users } from 'lucide-react';
 import { AvailabilityRow, isSupabaseConfigured, supabase } from './supabase';
 
 type UserName = 'Jaiden' | 'Hansol' | 'Jieun';
@@ -230,6 +230,18 @@ function makeUserSlotSet(userName: UserName | null, slots: Slot[], availability:
   return slotTimes;
 }
 
+function getDirtySlotTimes(draftSlots: Set<string>, remoteSlots: Set<string>, slots: Slot[]) {
+  const dirtySlots = new Set<string>();
+
+  for (const slot of slots) {
+    if (draftSlots.has(slot.iso) !== remoteSlots.has(slot.iso)) {
+      dirtySlots.add(slot.iso);
+    }
+  }
+
+  return dirtySlots;
+}
+
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
     const saved = window.localStorage.getItem('availability-user');
@@ -243,9 +255,11 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [draftAvailableSlots, setDraftAvailableSlots] = useState<Set<string>>(() => new Set());
   const [dirtySlotTimes, setDirtySlotTimes] = useState<Set<string>>(() => new Set());
+  const [restoreDraftSlots, setRestoreDraftSlots] = useState<Set<string> | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const dragState = useRef<DragState | null>(null);
   const draftScope = useRef('');
+  const resetClickTimer = useRef<number | null>(null);
 
   const selectedPerson = useMemo(
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
@@ -333,6 +347,7 @@ export default function App() {
       setDirtySlotTimes(new Set());
 
       if (scopeChanged) {
+        setRestoreDraftSlots(null);
         setSaveState('idle');
       }
     }
@@ -349,6 +364,14 @@ export default function App() {
     return () => {
       window.removeEventListener('pointerup', stopDragging);
       window.removeEventListener('pointercancel', stopDragging);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (resetClickTimer.current) {
+        window.clearTimeout(resetClickTimer.current);
+      }
     };
   }, []);
 
@@ -474,11 +497,51 @@ export default function App() {
   );
 
   const resetDraft = useCallback(() => {
+    setRestoreDraftSlots(new Set(draftAvailableSlots));
     setDraftAvailableSlots(new Set(remoteSelectedAvailableSlots));
     setDirtySlotTimes(new Set());
     setSaveState('idle');
     dragState.current = null;
-  }, [remoteSelectedAvailableSlots]);
+  }, [draftAvailableSlots, remoteSelectedAvailableSlots]);
+
+  const clearDraft = useCallback(() => {
+    setRestoreDraftSlots(new Set(draftAvailableSlots));
+    setDraftAvailableSlots(new Set());
+    setDirtySlotTimes(getDirtySlotTimes(new Set(), remoteSelectedAvailableSlots, slots));
+    setSaveState('idle');
+    dragState.current = null;
+  }, [draftAvailableSlots, remoteSelectedAvailableSlots, slots]);
+
+  const restoreDraft = useCallback(() => {
+    if (!restoreDraftSlots) return;
+
+    const restoredSlots = new Set(restoreDraftSlots);
+    setDraftAvailableSlots(restoredSlots);
+    setDirtySlotTimes(getDirtySlotTimes(restoredSlots, remoteSelectedAvailableSlots, slots));
+    setRestoreDraftSlots(null);
+    setSaveState('idle');
+    dragState.current = null;
+  }, [remoteSelectedAvailableSlots, restoreDraftSlots, slots]);
+
+  const handleResetClick = useCallback(() => {
+    if (resetClickTimer.current) {
+      window.clearTimeout(resetClickTimer.current);
+    }
+
+    resetClickTimer.current = window.setTimeout(() => {
+      resetDraft();
+      resetClickTimer.current = null;
+    }, 220);
+  }, [resetDraft]);
+
+  const handleResetDoubleClick = useCallback(() => {
+    if (resetClickTimer.current) {
+      window.clearTimeout(resetClickTimer.current);
+      resetClickTimer.current = null;
+    }
+
+    clearDraft();
+  }, [clearDraft]);
 
   const saveDraft = useCallback(async () => {
     if (!selectedUser || dirtySlotTimes.size === 0) return;
@@ -521,6 +584,7 @@ export default function App() {
       return sortRows([...nextRows.values()]);
     });
     setDirtySlotTimes(new Set());
+    setRestoreDraftSlots(null);
     setSaveState('saved');
   }, [dirtySlotTimes, draftAvailableSlots, selectedUser, slotByIso]);
 
@@ -721,14 +785,24 @@ export default function App() {
             <div className="control-side left">
               <button
                 aria-label="Discard unsaved changes"
-                className="secondary-action"
-                disabled={unsavedCount === 0 || saveState === 'saving'}
-                onClick={resetDraft}
-                title="Discard unsaved changes"
+                className="secondary-action icon-action"
+                disabled={saveState === 'saving'}
+                onDoubleClick={handleResetDoubleClick}
+                onClick={handleResetClick}
+                title="Click to discard unsaved changes. Double-click to clear this week."
                 type="button"
               >
                 <RotateCcw size={15} />
-                Reset
+              </button>
+              <button
+                aria-label="Restore previous draft"
+                className="secondary-action icon-action"
+                disabled={!restoreDraftSlots || saveState === 'saving'}
+                onClick={restoreDraft}
+                title="Restore previous draft"
+                type="button"
+              >
+                <Undo2 size={15} />
               </button>
             </div>
 

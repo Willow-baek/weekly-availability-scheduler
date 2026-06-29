@@ -410,6 +410,12 @@ h1 {
   color: #4b4640;
 }
 
+.icon-action {
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
 .primary-action:disabled,
 .secondary-action:disabled {
   cursor: not-allowed;
@@ -576,7 +582,7 @@ h1 {
   .controls-row {
     display: grid;
     gap: 8px;
-    grid-template-columns: 64px minmax(0, 1fr) 64px;
+    grid-template-columns: 72px minmax(0, 1fr) 70px;
     padding: 8px;
   }
 
@@ -594,6 +600,12 @@ h1 {
   .secondary-action {
     min-height: 34px;
     padding: 7px 9px;
+  }
+
+  .icon-action {
+    min-height: 31px;
+    padding: 0;
+    width: 31px;
   }
 
   .person-picker.compact {
