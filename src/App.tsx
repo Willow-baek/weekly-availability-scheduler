@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, Clock, CloudOff, RefreshCw, Users } from 'lucide-react';
+import { CalendarDays, Check, Clock, CloudOff, RefreshCw, RotateCcw, Save, Users } from 'lucide-react';
 import { AvailabilityRow, isSupabaseConfigured, supabase } from './supabase';
 
 type UserName = 'Jaiden' | 'Hansol' | 'Jieun';
@@ -29,19 +29,28 @@ type DragState = {
   touchedSlotTimes: Set<string>;
 };
 
+type TimeWindowId = 'main' | 'morning' | 'evening' | 'all';
+
+type TimeWindow = {
+  id: TimeWindowId;
+  label: string;
+  startHour: number;
+  endHour: number;
+};
+
 const PEOPLE: Person[] = [
   {
     name: 'Jaiden',
-    city: 'Seoul',
-    timezone: 'Asia/Seoul',
-    standardLabel: 'KST',
+    city: 'Sydney',
+    timezone: 'Australia/Sydney',
+    standardLabel: 'Sydney time',
     color: 'blue',
   },
   {
     name: 'Hansol',
-    city: 'Sydney',
-    timezone: 'Australia/Sydney',
-    standardLabel: 'Sydney time',
+    city: 'Seoul',
+    timezone: 'Asia/Seoul',
+    standardLabel: 'KST',
     color: 'green',
   },
   {
@@ -56,6 +65,12 @@ const PEOPLE: Person[] = [
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
+const TIME_WINDOWS: TimeWindow[] = [
+  { id: 'main', label: '07-23', startHour: 7, endHour: 23 },
+  { id: 'morning', label: '00-12', startHour: 0, endHour: 12 },
+  { id: 'evening', label: '12-24', startHour: 12, endHour: 24 },
+  { id: 'all', label: 'All', startHour: 0, endHour: 24 },
+];
 
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -196,6 +211,20 @@ function getAvailabilityClassNames(availableUsers: UserName[]) {
   return availableUsers.map((userName) => `available-${userName.toLowerCase()}`).join(' ');
 }
 
+function makeUserSlotSet(userName: UserName | null, slots: Slot[], availability: Map<string, AvailabilityRow>) {
+  const slotTimes = new Set<string>();
+
+  if (!userName) return slotTimes;
+
+  for (const slot of slots) {
+    if (availability.get(makeAvailabilityKey(userName, slot.iso))?.is_available) {
+      slotTimes.add(slot.iso);
+    }
+  }
+
+  return slotTimes;
+}
+
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
     const saved = window.localStorage.getItem('availability-user');
@@ -206,7 +235,12 @@ export default function App() {
     isSupabaseConfigured ? 'loading' : 'offline',
   );
   const [errorMessage, setErrorMessage] = useState('');
+  const [timeWindowId, setTimeWindowId] = useState<TimeWindowId>('main');
+  const [draftAvailableSlots, setDraftAvailableSlots] = useState<Set<string>>(() => new Set());
+  const [dirtySlotTimes, setDirtySlotTimes] = useState<Set<string>>(() => new Set());
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const dragState = useRef<DragState | null>(null);
+  const draftUser = useRef<UserName | null>(null);
 
   const selectedPerson = useMemo(
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
@@ -220,6 +254,20 @@ export default function App() {
 
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
   const slotByGridKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
+  const slotByIso = useMemo(() => new Map(slots.map((slot) => [slot.iso, slot])), [slots]);
+  const activeTimeWindow = useMemo(
+    () => TIME_WINDOWS.find((timeWindow) => timeWindow.id === timeWindowId) ?? TIME_WINDOWS[0],
+    [timeWindowId],
+  );
+  const visibleSlotIndexes = useMemo(() => {
+    const startMinute = activeTimeWindow.startHour * 60;
+    const endMinute = activeTimeWindow.endHour * 60;
+
+    return Array.from({ length: SLOT_COUNT }, (_, slotIndex) => slotIndex).filter((slotIndex) => {
+      const slotMinute = slotIndex * MINUTES_PER_SLOT;
+      return slotMinute >= startMinute && slotMinute < endMinute;
+    });
+  }, [activeTimeWindow]);
   const weekRange = useMemo(
     () => formatWeekRange(slots, selectedPerson?.timezone ?? PEOPLE[0].timezone),
     [selectedPerson?.timezone, slots],
@@ -239,11 +287,20 @@ export default function App() {
     return map;
   }, [rows]);
 
+  const remoteSelectedAvailableSlots = useMemo(
+    () => makeUserSlotSet(selectedUser, slots, availability),
+    [availability, selectedUser, slots],
+  );
+
   const visibleSlotsByTime = useMemo(() => {
     const map = new Map<string, UserName[]>();
 
     for (const slot of slots) {
       const names = PEOPLE.filter((person) => {
+        if (person.name === selectedUser) {
+          return draftAvailableSlots.has(slot.iso);
+        }
+
         const row = availability.get(makeAvailabilityKey(person.name, slot.iso));
         return row?.is_available;
       }).map((person) => person.name);
@@ -252,13 +309,31 @@ export default function App() {
     }
 
     return map;
-  }, [availability, slots]);
+  }, [availability, draftAvailableSlots, selectedUser, slots]);
+
+  const unsavedCount = dirtySlotTimes.size;
 
   useEffect(() => {
     if (selectedUser) {
       window.localStorage.setItem('availability-user', selectedUser);
     }
   }, [selectedUser]);
+
+  useEffect(() => {
+    if (!selectedUser) return;
+
+    const userChanged = draftUser.current !== selectedUser;
+
+    if (userChanged || dirtySlotTimes.size === 0) {
+      draftUser.current = selectedUser;
+      setDraftAvailableSlots(new Set(remoteSelectedAvailableSlots));
+      setDirtySlotTimes(new Set());
+
+      if (userChanged) {
+        setSaveState('idle');
+      }
+    }
+  }, [dirtySlotTimes.size, remoteSelectedAvailableSlots, selectedUser]);
 
   useEffect(() => {
     const stopDragging = () => {
@@ -356,44 +431,95 @@ export default function App() {
     };
   }, [slotSet]);
 
-  const updateAvailabilitySlots = useCallback(
-    async (targetSlots: Slot[], isAvailable: boolean) => {
+  const updateDraftSlots = useCallback(
+    (targetSlots: Slot[], isAvailable: boolean) => {
       if (!selectedUser) return;
       const uniqueSlots = Array.from(new Map(targetSlots.map((slot) => [slot.iso, slot])).values());
       if (uniqueSlots.length === 0) return;
 
-      const optimisticRows: AvailabilityRow[] = uniqueSlots.map((slot) => ({
+      setDraftAvailableSlots((current) => {
+        const next = new Set(current);
+
+        for (const slot of uniqueSlots) {
+          if (isAvailable) {
+            next.add(slot.iso);
+          } else {
+            next.delete(slot.iso);
+          }
+        }
+
+        return next;
+      });
+
+      setDirtySlotTimes((current) => {
+        const next = new Set(current);
+
+        for (const slot of uniqueSlots) {
+          if (remoteSelectedAvailableSlots.has(slot.iso) === isAvailable) {
+            next.delete(slot.iso);
+          } else {
+            next.add(slot.iso);
+          }
+        }
+
+        return next;
+      });
+
+      setSaveState('idle');
+    },
+    [remoteSelectedAvailableSlots, selectedUser],
+  );
+
+  const resetDraft = useCallback(() => {
+    setDraftAvailableSlots(new Set(remoteSelectedAvailableSlots));
+    setDirtySlotTimes(new Set());
+    setSaveState('idle');
+    dragState.current = null;
+  }, [remoteSelectedAvailableSlots]);
+
+  const saveDraft = useCallback(async () => {
+    if (!selectedUser || dirtySlotTimes.size === 0) return;
+
+    const rowsToSave = [...dirtySlotTimes]
+      .map((slotTime) => slotByIso.get(slotTime))
+      .filter((slot): slot is Slot => Boolean(slot))
+      .map((slot) => ({
         user_name: selectedUser,
         day_of_week: slot.dayOfWeek,
         slot_time: slot.iso,
-        is_available: isAvailable,
+        is_available: draftAvailableSlots.has(slot.iso),
       }));
 
-      setRows((current) => {
-        const nextRows = new Map(current.map((row) => [makeAvailabilityKey(row.user_name, row.slot_time), row]));
+    if (rowsToSave.length === 0) return;
 
-        for (const row of optimisticRows) {
-          nextRows.set(makeAvailabilityKey(row.user_name, row.slot_time), row);
-        }
+    setSaveState('saving');
+    setErrorMessage('');
 
-        return sortRows([...nextRows.values()]);
-      });
-
-      if (!supabase) {
-        return;
-      }
-
-      const { error } = await supabase.from('availability').upsert(optimisticRows, {
+    if (supabase) {
+      const { error } = await supabase.from('availability').upsert(rowsToSave, {
         onConflict: 'user_name,slot_time',
       });
 
       if (error) {
+        setSaveState('error');
         setStatus('error');
         setErrorMessage(error.message);
+        return;
       }
-    },
-    [selectedUser],
-  );
+    }
+
+    setRows((current) => {
+      const nextRows = new Map(current.map((row) => [makeAvailabilityKey(row.user_name, row.slot_time), row]));
+
+      for (const row of rowsToSave) {
+        nextRows.set(makeAvailabilityKey(row.user_name, row.slot_time), row);
+      }
+
+      return sortRows([...nextRows.values()]);
+    });
+    setDirtySlotTimes(new Set());
+    setSaveState('saved');
+  }, [dirtySlotTimes, draftAvailableSlots, selectedUser, slotByIso]);
 
   const getSlotsBetween = useCallback(
     (fromSlot: Slot, toSlot: Slot) => {
@@ -430,9 +556,9 @@ export default function App() {
       }
 
       state.lastSlot = slot;
-      void updateAvailabilitySlots(rangeSlots, state.isAvailable);
+      updateDraftSlots(rangeSlots, state.isAvailable);
     },
-    [getSlotsBetween, updateAvailabilitySlots],
+    [getSlotsBetween, updateDraftSlots],
   );
 
   useEffect(() => {
@@ -460,7 +586,7 @@ export default function App() {
     if (!selectedUser) return;
 
     event.preventDefault();
-    const current = availability.get(makeAvailabilityKey(selectedUser, slot.iso))?.is_available ?? false;
+    const current = draftAvailableSlots.has(slot.iso);
     const next = !current;
     dragState.current = {
       isAvailable: next,
@@ -469,7 +595,7 @@ export default function App() {
     };
 
     event.currentTarget.setPointerCapture(event.pointerId);
-    void updateAvailabilitySlots([slot], next);
+    updateDraftSlots([slot], next);
   };
 
   const handleSlotPointerEnter = (slot: Slot) => {
@@ -578,6 +704,41 @@ export default function App() {
             </div>
           </section>
 
+          <section className="controls-row" aria-label="Scheduler controls">
+            <div className="time-window-picker" aria-label="Visible hours">
+              {TIME_WINDOWS.map((timeWindow) => (
+                <button
+                  aria-pressed={timeWindowId === timeWindow.id}
+                  key={timeWindow.id}
+                  onClick={() => setTimeWindowId(timeWindow.id)}
+                  type="button"
+                >
+                  {timeWindow.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="save-actions">
+              <span className={unsavedCount > 0 ? 'save-note dirty' : 'save-note'}>
+                {saveState === 'saving'
+                  ? 'Saving...'
+                  : saveState === 'saved'
+                    ? 'Saved'
+                    : unsavedCount > 0
+                      ? `${unsavedCount} unsaved`
+                      : 'No changes'}
+              </span>
+              <button className="secondary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={resetDraft} type="button">
+                <RotateCcw size={15} />
+                Reset
+              </button>
+              <button className="primary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={saveDraft} type="button">
+                {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
+                Save
+              </button>
+            </div>
+          </section>
+
           <section className="scheduler" aria-label="Weekly availability grid">
             <div className="grid-head time-head">Time</div>
             {dayDates.map((day) => (
@@ -586,7 +747,7 @@ export default function App() {
               </div>
             ))}
 
-            {Array.from({ length: SLOT_COUNT }, (_, slotIndex) => {
+            {visibleSlotIndexes.map((slotIndex) => {
               const hour = Math.floor((slotIndex * MINUTES_PER_SLOT) / 60);
               const minute = (slotIndex * MINUTES_PER_SLOT) % 60;
               const timeLabel = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
@@ -597,9 +758,7 @@ export default function App() {
                   {DAY_LABELS.map((_, dayIndex) => {
                     const slot = slots[dayIndex * SLOT_COUNT + slotIndex];
                     const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
-                    const isMine = selectedUser
-                      ? availability.get(makeAvailabilityKey(selectedUser, slot.iso))?.is_available ?? false
-                      : false;
+                    const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
                     const overlapClass = availableUsers.length > 1 ? 'overlap' : '';
                     const mineClass = isMine ? 'mine' : '';
                     const availabilityClass = getAvailabilityClassNames(availableUsers);

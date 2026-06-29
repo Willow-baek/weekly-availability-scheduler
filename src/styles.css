@@ -216,7 +216,8 @@ h1 {
 }
 
 .notice,
-.context-row {
+.context-row,
+.controls-row {
   background: #ffffff;
   border: 1px solid #ded8cf;
   border-radius: 8px;
@@ -300,6 +301,86 @@ h1 {
   border: 1px solid #272b2f;
 }
 
+.controls-row {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.time-window-picker {
+  background: #f5f1ea;
+  border: 1px solid #ded8cf;
+  border-radius: 8px;
+  display: inline-grid;
+  grid-template-columns: repeat(4, minmax(58px, 1fr));
+  padding: 3px;
+}
+
+.time-window-picker button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #5c554e;
+  cursor: pointer;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.time-window-picker button[aria-pressed="true"] {
+  background: #272b2f;
+  color: #ffffff;
+}
+
+.save-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.save-note {
+  color: #746d65;
+  font-size: 0.9rem;
+  min-width: 90px;
+  text-align: right;
+}
+
+.save-note.dirty {
+  color: #8a4d16;
+  font-weight: 700;
+}
+
+.primary-action,
+.secondary-action {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.primary-action {
+  background: #272b2f;
+  color: #ffffff;
+}
+
+.secondary-action {
+  background: #ffffff;
+  border-color: #ded8cf;
+  color: #4b4640;
+}
+
+.primary-action:disabled,
+.secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .scheduler {
   background: #ffffff;
   border: 1px solid #d7d0c7;
@@ -307,6 +388,7 @@ h1 {
   display: grid;
   grid-template-columns: 72px repeat(7, minmax(92px, 1fr));
   margin: 0 auto;
+  max-height: calc(100vh - 310px);
   max-width: 1480px;
   overflow: auto;
   user-select: none;
@@ -430,9 +512,23 @@ h1 {
   }
 
   .topbar,
-  .context-row {
+  .context-row,
+  .controls-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .save-actions {
+    justify-content: space-between;
+  }
+
+  .save-note {
+    min-width: 72px;
+    text-align: left;
+  }
+
+  .time-window-picker {
+    width: 100%;
   }
 
   .header-actions {
@@ -445,6 +541,7 @@ h1 {
   }
 
   .scheduler {
+    max-height: calc(100vh - 360px);
     grid-template-columns: 62px repeat(7, minmax(82px, 1fr));
   }
 
