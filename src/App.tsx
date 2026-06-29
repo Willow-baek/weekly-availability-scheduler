@@ -29,15 +29,6 @@ type DragState = {
   touchedSlotTimes: Set<string>;
 };
 
-type TimeWindowId = 'main' | 'morning' | 'evening' | 'all';
-
-type TimeWindow = {
-  id: TimeWindowId;
-  label: string;
-  startHour: number;
-  endHour: number;
-};
-
 const PEOPLE: Person[] = [
   {
     name: 'Jaiden',
@@ -66,12 +57,7 @@ const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
 const TOTAL_WEEKS = 16;
-const TIME_WINDOWS: TimeWindow[] = [
-  { id: 'main', label: '07-23', startHour: 7, endHour: 23 },
-  { id: 'morning', label: '00-12', startHour: 0, endHour: 12 },
-  { id: 'evening', label: '12-24', startHour: 12, endHour: 24 },
-  { id: 'all', label: 'All', startHour: 0, endHour: 24 },
-];
+const HOURS_PER_DAY = 24;
 
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -238,7 +224,6 @@ export default function App() {
   );
   const [errorMessage, setErrorMessage] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
-  const [timeWindowId, setTimeWindowId] = useState<TimeWindowId>('main');
   const [draftAvailableSlots, setDraftAvailableSlots] = useState<Set<string>>(() => new Set());
   const [dirtySlotTimes, setDirtySlotTimes] = useState<Set<string>>(() => new Set());
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -258,19 +243,6 @@ export default function App() {
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
   const slotByGridKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
   const slotByIso = useMemo(() => new Map(slots.map((slot) => [slot.iso, slot])), [slots]);
-  const activeTimeWindow = useMemo(
-    () => TIME_WINDOWS.find((timeWindow) => timeWindow.id === timeWindowId) ?? TIME_WINDOWS[0],
-    [timeWindowId],
-  );
-  const visibleSlotIndexes = useMemo(() => {
-    const startMinute = activeTimeWindow.startHour * 60;
-    const endMinute = activeTimeWindow.endHour * 60;
-
-    return Array.from({ length: SLOT_COUNT }, (_, slotIndex) => slotIndex).filter((slotIndex) => {
-      const slotMinute = slotIndex * MINUTES_PER_SLOT;
-      return slotMinute >= startMinute && slotMinute < endMinute;
-    });
-  }, [activeTimeWindow]);
   const weekRange = useMemo(
     () => formatWeekRange(slots, selectedPerson?.timezone ?? PEOPLE[0].timezone),
     [selectedPerson?.timezone, slots],
@@ -317,6 +289,14 @@ export default function App() {
   }, [availability, draftAvailableSlots, selectedUser, slots]);
 
   const unsavedCount = dirtySlotTimes.size;
+  const syncLabel =
+    status === 'offline'
+      ? 'Local demo'
+      : status === 'error'
+        ? 'Sync error'
+        : status === 'loading'
+          ? 'Syncing'
+          : 'Realtime on';
 
   useEffect(() => {
     if (selectedUser) {
@@ -659,6 +639,16 @@ export default function App() {
             </div>
 
             <div className="header-actions">
+              <div
+                aria-label={syncLabel}
+                className={`sync-state ${status}`}
+                role="status"
+                title={syncLabel}
+              >
+                {status === 'loading' ? <RefreshCw size={15} className="spin" /> : <Clock size={15} />}
+                <span className="sr-only">{syncLabel}</span>
+              </div>
+
               <div className="week-pager" aria-label="Week navigation">
                 <button
                   aria-label="Previous week"
@@ -679,34 +669,6 @@ export default function App() {
                 >
                   <ChevronRight size={17} />
                 </button>
-              </div>
-
-              <div className={`sync-state ${status}`}>
-                {status === 'loading' ? <RefreshCw size={15} className="spin" /> : <Clock size={15} />}
-                <span>
-                  {status === 'offline'
-                    ? 'Local demo'
-                    : status === 'error'
-                      ? 'Sync error'
-                      : status === 'loading'
-                        ? 'Syncing'
-                        : 'Realtime on'}
-                </span>
-              </div>
-
-              <div className="person-picker compact" aria-label="Current user">
-                {PEOPLE.map((person) => (
-                  <button
-                    aria-pressed={selectedUser === person.name}
-                    className={`person-chip ${person.color}`}
-                    key={person.name}
-                    onClick={() => setSelectedUser(person.name)}
-                    type="button"
-                  >
-                    {selectedUser === person.name && <Check size={14} />}
-                    {person.name}
-                  </button>
-                ))}
               </div>
             </div>
           </header>
@@ -743,20 +705,29 @@ export default function App() {
           </section>
 
           <section className="controls-row" aria-label="Scheduler controls">
-            <div className="time-window-picker" aria-label="Visible hours">
-              {TIME_WINDOWS.map((timeWindow) => (
+            <div className="control-side left">
+              <button className="secondary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={resetDraft} type="button">
+                <RotateCcw size={15} />
+                Reset
+              </button>
+            </div>
+
+            <div className="person-picker compact" aria-label="Current user">
+              {PEOPLE.map((person) => (
                 <button
-                  aria-pressed={timeWindowId === timeWindow.id}
-                  key={timeWindow.id}
-                  onClick={() => setTimeWindowId(timeWindow.id)}
+                  aria-pressed={selectedUser === person.name}
+                  className={`person-chip ${person.color}`}
+                  key={person.name}
+                  onClick={() => setSelectedUser(person.name)}
                   type="button"
                 >
-                  {timeWindow.label}
+                  {selectedUser === person.name && <Check size={14} />}
+                  {person.name}
                 </button>
               ))}
             </div>
 
-            <div className="save-actions">
+            <div className="control-side right">
               <span className={unsavedCount > 0 ? 'save-note dirty' : 'save-note'}>
                 {saveState === 'saving'
                   ? 'Saving...'
@@ -766,10 +737,6 @@ export default function App() {
                       ? `${unsavedCount} unsaved`
                       : 'No changes'}
               </span>
-              <button className="secondary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={resetDraft} type="button">
-                <RotateCcw size={15} />
-                Reset
-              </button>
               <button className="primary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={saveDraft} type="button">
                 {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
                 Save
@@ -785,32 +752,37 @@ export default function App() {
               </div>
             ))}
 
-            {visibleSlotIndexes.map((slotIndex) => {
-              const hour = Math.floor((slotIndex * MINUTES_PER_SLOT) / 60);
-              const minute = (slotIndex * MINUTES_PER_SLOT) % 60;
-              const timeLabel = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+            {Array.from({ length: HOURS_PER_DAY }, (_, hour) => {
+              const timeLabel = `${String(hour).padStart(2, '0')}:00`;
 
               return (
                 <div className="row-fragment" key={timeLabel}>
                   <div className="time-cell">{timeLabel}</div>
                   {DAY_LABELS.map((_, dayIndex) => {
-                    const slot = slots[dayIndex * SLOT_COUNT + slotIndex];
-                    const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
-                    const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
-                    const overlapClass = availableUsers.length > 1 ? 'overlap' : '';
-                    const mineClass = isMine ? 'mine' : '';
-                    const availabilityClass = getAvailabilityClassNames(availableUsers);
+                    const halfHourSlots = [hour * 2, hour * 2 + 1].map((slotIndex) => slots[dayIndex * SLOT_COUNT + slotIndex]);
 
                     return (
-                      <button
-                        aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
-                        className={`slot-cell ${availabilityClass} ${overlapClass} ${mineClass}`}
-                        data-slot-key={slot.key}
-                        key={slot.key}
-                        onPointerDown={(event) => handleSlotPointerDown(event, slot)}
-                        onPointerEnter={() => handleSlotPointerEnter(slot)}
-                        type="button"
-                      />
+                      <div className="hour-cell" key={`${dayIndex}-${hour}`}>
+                        {halfHourSlots.map((slot) => {
+                          const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
+                          const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
+                          const overlapClass = availableUsers.length > 1 ? 'overlap' : '';
+                          const mineClass = isMine ? 'mine' : '';
+                          const availabilityClass = getAvailabilityClassNames(availableUsers);
+
+                          return (
+                            <button
+                              aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
+                              className={`half-slot slot-cell ${availabilityClass} ${overlapClass} ${mineClass}`}
+                              data-slot-key={slot.key}
+                              key={slot.key}
+                              onPointerDown={(event) => handleSlotPointerDown(event, slot)}
+                              onPointerEnter={() => handleSlotPointerEnter(slot)}
+                              type="button"
+                            />
+                          );
+                        })}
+                      </div>
                     );
                   })}
                 </div>
