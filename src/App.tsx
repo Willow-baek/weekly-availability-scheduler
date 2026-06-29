@@ -114,14 +114,8 @@ function getViewerWeekStart(timeZone: string) {
   return addLocalDays(nowParts.year, nowParts.month, nowParts.day, -daysSinceMonday);
 }
 
-function formatDateLabel(year: number, month: number, day: number, timeZone: string) {
-  const utc = zonedLocalTimeToUtc(year, month, day, 12, 0, timeZone);
-
-  return new Intl.DateTimeFormat('en', {
-    timeZone,
-    month: 'short',
-    day: 'numeric',
-  }).format(utc);
+function formatShortDateLabel(month: number, day: number) {
+  return `${month}/${day}`;
 }
 
 function formatWeekRange(slots: Slot[], timeZone: string) {
@@ -131,7 +125,7 @@ function formatWeekRange(slots: Slot[], timeZone: string) {
   const last = new Date(slots[slots.length - 1].iso);
   const formatter = new Intl.DateTimeFormat('en', {
     timeZone,
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
   });
 
@@ -156,7 +150,7 @@ function buildSlots(timeZone: string, weekOffset: number) {
     const date = addLocalDays(start.year, start.month, start.day, dayIndex);
     return {
       ...date,
-      label: `${DAY_LABELS[dayIndex]} ${formatDateLabel(date.year, date.month, date.day, timeZone)}`,
+      label: `${DAY_LABELS[dayIndex]} ${formatShortDateLabel(date.month, date.day)}`,
     };
   });
 
@@ -186,34 +180,44 @@ function buildSlots(timeZone: string, weekOffset: number) {
 }
 
 function makeAvailabilityKey(userName: string, slotTime: string) {
-  return `${userName}::${normalizeSlotTime(slotTime)}`;
+  return `${userName}::${normalizeSlotTime(slotTime) ?? slotTime}`;
 }
 
 function normalizeSlotTime(slotTime: string) {
-  return new Date(slotTime).toISOString();
+  const date = new Date(slotTime);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
 }
 
-function normalizeAvailabilityRow(row: AvailabilityRow): AvailabilityRow {
+function normalizeAvailabilityRow(row: AvailabilityRow): AvailabilityRow | null {
+  if (!row.slot_time) {
+    return null;
+  }
+
+  const slotTime = normalizeSlotTime(row.slot_time);
+
+  if (!slotTime) {
+    return null;
+  }
+
   return {
     ...row,
-    slot_time: normalizeSlotTime(row.slot_time),
+    slot_time: slotTime,
   };
 }
 
 function normalizeAvailabilityRows(rows: AvailabilityRow[]) {
-  return rows.map(normalizeAvailabilityRow);
+  return rows.map(normalizeAvailabilityRow).filter((row): row is AvailabilityRow => Boolean(row));
 }
 
 function sortRows(rows: AvailabilityRow[]) {
   return normalizeAvailabilityRows(rows).sort(
     (a, b) => a.slot_time.localeCompare(b.slot_time) || a.user_name.localeCompare(b.user_name),
   );
-}
-
-function getAvailabilityClassNames(availableUsers: UserName[]) {
-  if (availableUsers.length === 0) return 'empty';
-
-  return availableUsers.map((userName) => `available-${userName.toLowerCase()}`).join(' ');
 }
 
 function makeUserSlotSet(userName: UserName | null, slots: Slot[], availability: Map<string, AvailabilityRow>) {
@@ -848,31 +852,44 @@ export default function App() {
 
             {Array.from({ length: HOURS_PER_DAY }, (_, hour) => {
               const timeLabel = `${String(hour).padStart(2, '0')}:00`;
+              const periodLabel = hour === 0 ? '오전' : hour === 12 ? '오후' : '';
+              const periodClass = hour === 12 ? 'period-start' : '';
 
               return (
                 <div className="row-fragment" key={timeLabel}>
-                  <div className="time-cell">{timeLabel}</div>
+                  <div className={`time-cell ${periodClass}`}>
+                    <span>{timeLabel}</span>
+                    {periodLabel && <small>{periodLabel}</small>}
+                  </div>
                   {DAY_LABELS.map((_, dayIndex) => {
                     const halfHourSlots = [hour * 2, hour * 2 + 1].map((slotIndex) => slots[dayIndex * SLOT_COUNT + slotIndex]);
 
                     return (
-                      <div className="hour-cell" key={`${dayIndex}-${hour}`}>
+                      <div className={`hour-cell ${periodClass}`} key={`${dayIndex}-${hour}`}>
                         {halfHourSlots.map((slot) => {
                           const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
                           const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
                           const mineClass = isMine ? 'mine' : '';
-                          const availabilityClass = getAvailabilityClassNames(availableUsers);
+                          const emptyClass = availableUsers.length === 0 ? 'empty' : '';
 
                           return (
                             <button
                               aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
-                              className={`half-slot slot-cell ${availabilityClass} ${mineClass}`}
+                              className={`half-slot slot-cell ${emptyClass} ${mineClass}`}
                               data-slot-key={slot.key}
                               key={slot.key}
                               onPointerDown={(event) => handleSlotPointerDown(event, slot)}
                               onPointerEnter={() => handleSlotPointerEnter(slot)}
                               type="button"
-                            />
+                            >
+                              {PEOPLE.map((person) => (
+                                <span
+                                  aria-hidden="true"
+                                  className={`slot-segment ${person.color} ${availableUsers.includes(person.name) ? 'active' : ''}`}
+                                  key={person.name}
+                                />
+                              ))}
+                            </button>
                           );
                         })}
                       </div>

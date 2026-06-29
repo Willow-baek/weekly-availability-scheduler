@@ -427,11 +427,12 @@ h1 {
   border: 1px solid #d7d0c7;
   border-radius: 8px;
   display: grid;
-  grid-template-columns: 72px repeat(7, minmax(92px, 1fr));
+  grid-template-columns: 54px repeat(7, minmax(76px, 1fr));
   margin: 0 auto;
   max-height: calc(100vh - 310px);
   max-width: 1480px;
   overflow: auto;
+  scrollbar-gutter: stable;
   user-select: none;
 }
 
@@ -441,10 +442,10 @@ h1 {
   border-bottom: 1px solid #3d4247;
   color: #ffffff;
   display: flex;
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   font-weight: 800;
-  min-height: 48px;
-  padding: 10px;
+  min-height: 44px;
+  padding: 8px;
   position: sticky;
   top: 0;
   z-index: 2;
@@ -458,6 +459,7 @@ h1 {
 .day-head {
   justify-content: center;
   text-align: center;
+  white-space: nowrap;
 }
 
 .row-fragment {
@@ -471,12 +473,26 @@ h1 {
   border-top: 1px solid #ebe5dd;
   color: #6c645b;
   display: flex;
-  font-size: 0.8rem;
+  flex-direction: column;
+  font-size: 0.76rem;
+  gap: 1px;
   justify-content: center;
   min-height: 40px;
   position: sticky;
   left: 0;
   z-index: 1;
+}
+
+.time-cell small {
+  color: #8a4d16;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.time-cell.period-start,
+.hour-cell.period-start {
+  border-top: 3px solid #c9beb0;
 }
 
 .hour-cell {
@@ -485,33 +501,46 @@ h1 {
   display: grid;
   grid-template-rows: repeat(2, minmax(20px, 1fr));
   min-height: 40px;
-  min-width: 92px;
+  min-width: 76px;
 }
 
 .slot-cell {
   align-items: center;
   border: 0;
   cursor: crosshair;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   justify-content: center;
   min-height: 20px;
   padding: 0;
-  --slot-empty: #ffffff;
-  --jaiden-segment: var(--slot-empty);
-  --hansol-segment: var(--slot-empty);
-  --jieun-segment: var(--slot-empty);
-  background:
-    linear-gradient(90deg, transparent 0 calc(33.33% - 1px), rgba(235, 229, 221, 0.9) calc(33.33% - 1px) 33.33%, transparent 33.33% calc(66.66% - 1px), rgba(235, 229, 221, 0.9) calc(66.66% - 1px) 66.66%, transparent 66.66% 100%),
-    linear-gradient(
-      90deg,
-      var(--jaiden-segment) 0 33.33%,
-      var(--hansol-segment) 33.33% 66.66%,
-      var(--jieun-segment) 66.66% 100%
-    );
+  background: #ffffff;
   transition:
     background 120ms ease,
     box-shadow 120ms ease,
     filter 120ms ease;
+}
+
+.slot-segment {
+  align-self: stretch;
+  background: transparent;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.slot-segment + .slot-segment {
+  border-left: 1px solid rgba(235, 229, 221, 0.9);
+}
+
+.slot-segment.blue.active {
+  background: var(--jaiden-color);
+}
+
+.slot-segment.green.active {
+  background: var(--hansol-color);
+}
+
+.slot-segment.orange.active {
+  background: var(--jieun-color);
 }
 
 .half-slot + .half-slot {
@@ -519,7 +548,7 @@ h1 {
 }
 
 .hour-cell:nth-child(odd) .slot-cell.empty {
-  --slot-empty: #fdfbf8;
+  background: #fdfbf8;
 }
 
 .slot-cell:hover {
@@ -527,19 +556,7 @@ h1 {
 }
 
 .slot-cell.empty.mine {
-  --slot-empty: #fbfaf7;
-}
-
-.slot-cell.available-jaiden {
-  --jaiden-segment: var(--jaiden-color);
-}
-
-.slot-cell.available-hansol {
-  --hansol-segment: var(--hansol-color);
-}
-
-.slot-cell.available-jieun {
-  --jieun-segment: var(--jieun-color);
+  background: #fbfaf7;
 }
 
 .slot-cell.mine:not(.empty) {
@@ -622,7 +639,15 @@ h1 {
 
   .scheduler {
     max-height: calc(100vh - 330px);
-    grid-template-columns: 62px repeat(7, minmax(82px, 1fr));
+    grid-template-columns: 48px repeat(7, minmax(68px, 1fr));
+  }
+
+  .hour-cell {
+    min-width: 68px;
+  }
+
+  .time-cell {
+    font-size: 0.7rem;
   }
 
   h1 {
