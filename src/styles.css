@@ -682,36 +682,28 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(32, 35, 37, 0.45);
 }
 
-.slot-cell.has-event::after {
-  background: linear-gradient(90deg, rgba(225, 29, 72, 0.24), rgba(244, 63, 94, 0.16));
+.slot-cell.has-event::before {
+  border: 2px solid var(--event-color);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
   content: "";
   inset: 0;
   pointer-events: none;
   position: absolute;
-  z-index: 1;
+  z-index: 2;
 }
 
 .slot-cell.has-event {
-  box-shadow:
-    inset 0 0 0 2px var(--event-color),
-    inset 0 0 0 999px var(--event-glow);
-}
-
-.slot-cell.has-event.event-continuation {
-  box-shadow:
-    inset 3px 0 0 var(--event-color),
-    inset 0 0 0 999px rgba(225, 29, 72, 0.1);
-}
-
-.slot-cell.has-event.event-continuation::after {
-  background: rgba(225, 29, 72, 0.14);
+  box-shadow: none;
 }
 
 .slot-cell.has-event:hover,
 .slot-cell.has-event:focus-visible {
-  box-shadow:
-    inset 0 0 0 2px #be123c,
-    inset 0 0 0 999px rgba(225, 29, 72, 0.24);
+  box-shadow: none;
+}
+
+.slot-cell.has-event:hover::before,
+.slot-cell.has-event:focus-visible::before {
+  border-color: #be123c;
 }
 
 .event-badge {
@@ -738,10 +730,6 @@ h1 {
   transform: translateY(-50%);
   white-space: nowrap;
   z-index: 3;
-}
-
-.slot-cell.event-continuation .event-badge {
-  opacity: 0.82;
 }
 
 .event-tooltip {
@@ -803,7 +791,25 @@ h1 {
   gap: 14px;
   max-width: 420px;
   padding: 18px;
+  position: relative;
   width: min(100%, 420px);
+}
+
+.event-dialog-close {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-radius: 999px;
+  color: #4b4640;
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 30px;
 }
 
 .event-dialog > div:first-child {
@@ -833,7 +839,8 @@ h1 {
   padding: 0;
 }
 
-.duration-picker legend {
+.duration-picker legend,
+.repeat-picker legend {
   color: #56514b;
   font-size: 0.84rem;
   font-weight: 700;
@@ -861,6 +868,25 @@ h1 {
   background: #272b2f;
   border-color: #272b2f;
   color: #ffffff;
+}
+
+.repeat-picker {
+  border: 0;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.repeat-toggle {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.repeat-toggle input {
+  height: 16px;
+  width: 16px;
 }
 
 .event-dialog input,
@@ -916,9 +942,7 @@ h1 {
   }
 
   .save-note {
-    font-size: 0.78rem;
-    min-width: 0;
-    text-align: left;
+    display: none;
   }
 
   .header-actions {
@@ -979,19 +1003,23 @@ h1 {
   }
 
   .person-picker.compact {
+    align-items: center;
+    gap: 13px;
     justify-content: center;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    min-height: 48px;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   .person-chip {
+    border: 0;
     border-radius: 999px;
     flex: 0 0 auto;
-    height: 34px;
-    min-height: 34px;
+    height: 28px;
+    min-height: 28px;
     padding: 0;
     position: relative;
-    width: 34px;
+    width: 28px;
   }
 
   .person-chip-label {
@@ -1006,57 +1034,43 @@ h1 {
   }
 
   .person-chip-dot {
-    border-radius: 999px;
-    display: block;
-    height: 18px;
-    width: 18px;
+    display: none;
   }
 
-  .person-chip.blue .person-chip-dot {
+  .person-chip.blue {
     background: var(--jaiden-color);
   }
 
-  .person-chip.green .person-chip-dot {
+  .person-chip.green {
     background: var(--hansol-color);
     border: 1px solid #d8c977;
   }
 
-  .person-chip.orange .person-chip-dot {
+  .person-chip.orange {
     background: var(--jieun-color);
   }
 
   .person-chip[aria-pressed="true"] {
-    background: #ffffff;
-    box-shadow:
-      0 0 0 2px #ffffff,
-      0 0 0 4px currentColor;
+    height: 44px;
+    width: 44px;
+    box-shadow: 0 0 0 4px #ffffff;
   }
 
   .person-chip.blue[aria-pressed="true"] {
-    border-color: var(--jaiden-color);
-    color: var(--jaiden-color);
+    background: var(--jaiden-color);
   }
 
   .person-chip.green[aria-pressed="true"] {
     border-color: #d8c977;
-    color: #b29b18;
+    background: var(--hansol-color);
   }
 
   .person-chip.orange[aria-pressed="true"] {
-    border-color: var(--jieun-color);
-    color: var(--jieun-color);
+    background: var(--jieun-color);
   }
 
   .person-chip[aria-pressed="true"] svg {
-    background: currentColor;
-    border-radius: 999px;
-    color: #ffffff;
-    height: 14px;
-    padding: 2px;
-    position: absolute;
-    right: -3px;
-    top: -3px;
-    width: 14px;
+    display: none;
   }
 
   .scheduler {

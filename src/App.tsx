@@ -14,6 +14,7 @@ import {
   Save,
   Undo2,
   Users,
+  X,
 } from 'lucide-react';
 import { AvailabilityRow, MeetingEventRow, isSupabaseConfigured, supabase } from './supabase';
 
@@ -61,6 +62,8 @@ type EventEditorState = {
   title: string;
   note: string;
   durationMinutes: number;
+  repeatWeekly: boolean;
+  repeatCount: number;
   createdBy?: string;
 };
 
@@ -110,6 +113,7 @@ const EVENT_DURATION_OPTIONS = [
   { label: '1.5h', value: 90 },
   { label: '2h', value: 120 },
 ];
+const EVENT_REPEAT_COUNT_OPTIONS = [2, 3, 4, 6, 8, 12];
 
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -166,6 +170,13 @@ function localDateTimeFieldsToIso(date: string, time: string, timeZone: string) 
   }
 
   return zonedLocalTimeToUtc(year, month, day, hour, minute, timeZone).toISOString();
+}
+
+function addDaysToDateInput(date: string, days: number) {
+  const [year, month, day] = date.split('-').map(Number);
+  const next = addLocalDays(year, month, day, days);
+
+  return `${next.year}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`;
 }
 
 function addLocalDays(year: number, month: number, day: number, days: number) {
@@ -865,6 +876,8 @@ export default function App() {
       title: eventRow?.title ?? 'Zoom meeting',
       note: eventRow?.note ?? '',
       durationMinutes: getEventDurationMinutes(eventRow ?? { title: '', starts_at: slot.iso, created_by: selectedUser ?? '' }),
+      repeatWeekly: false,
+      repeatCount: 4,
       createdBy: eventRow?.created_by,
     });
     setEventSaveState('idle');
@@ -896,15 +909,19 @@ export default function App() {
       duration_minutes: eventEditor.durationMinutes,
       created_by: eventEditor.createdBy ?? selectedUser,
     };
+    const repeatCount = eventEditor.id || !eventEditor.repeatWeekly ? 1 : eventEditor.repeatCount;
+    const rowsToCreate = Array.from({ length: repeatCount }, (_, index) => ({
+      ...rowToSave,
+      starts_at: localDateTimeFieldsToIso(addDaysToDateInput(eventEditor.date, index * 7), eventEditor.time, eventEditor.timeZone),
+    }));
 
     setEventSaveState('saving');
     setEventErrorMessage('');
 
     if (supabase) {
-      const request = eventEditor.id
-        ? supabase.from('schedule_events').update(rowToSave).eq('id', eventEditor.id).select('*').single()
-        : supabase.from('schedule_events').insert(rowToSave).select('*').single();
-      const { data, error } = await request;
+      const { data, error } = eventEditor.id
+        ? await supabase.from('schedule_events').update(rowToSave).eq('id', eventEditor.id).select('*').single()
+        : await supabase.from('schedule_events').insert(rowsToCreate).select('*');
 
       if (error) {
         setEventSaveState('error');
@@ -918,21 +935,25 @@ export default function App() {
         return;
       }
 
-      const savedRow = normalizeMeetingEventRow(data as MeetingEventRow);
-      if (savedRow) {
+      const savedRows = Array.isArray(data)
+        ? normalizeMeetingEventRows(data as MeetingEventRow[])
+        : normalizeMeetingEventRows([data as MeetingEventRow]);
+      if (savedRows.length > 0) {
         setEventRows((current) => {
-          const withoutSavedRow = current.filter((row) => row.id !== savedRow.id);
-          return sortEventRows([...withoutSavedRow, savedRow]);
+          const savedIds = new Set(savedRows.map((row) => row.id).filter(Boolean));
+          const withoutSavedRows = current.filter((row) => !row.id || !savedIds.has(row.id));
+          return sortEventRows([...withoutSavedRows, ...savedRows]);
         });
       }
     } else {
       setEventRows((current) =>
         sortEventRows([
           ...current.filter((row) => row.id !== eventEditor.id),
-          {
-            ...rowToSave,
+          ...rowsToCreate.map((row, index) => ({
+            ...row,
             id: eventEditor.id ?? crypto.randomUUID(),
-          },
+            created_at: new Date(Date.now() + index).toISOString(),
+          })),
         ]),
       );
     }
@@ -1540,6 +1561,9 @@ export default function App() {
                   void saveEvent();
                 }}
               >
+                <button aria-label="Close meeting editor" className="event-dialog-close" onClick={closeEventEditor} type="button">
+                  <X size={16} />
+                </button>
                 <div>
                   <span className="context-label">{eventEditor.id ? 'Edit meeting' : 'Meeting note'}</span>
                   <strong>{eventEditorStartsAtIso ? formatEventDateTime(eventEditorStartsAtIso, eventEditor.timeZone) : ''}</strong>
@@ -1639,6 +1663,40 @@ export default function App() {
                     ))}
                   </div>
                 </fieldset>
+                {!eventEditor.id && (
+                  <fieldset className="repeat-picker">
+                    <legend>Regular meeting</legend>
+                    <label className="repeat-toggle">
+                      <input
+                        checked={eventEditor.repeatWeekly}
+                        onChange={(event) =>
+                          setEventEditor((current) => (current ? { ...current, repeatWeekly: event.target.checked } : current))
+                        }
+                        type="checkbox"
+                      />
+                      Repeat weekly
+                    </label>
+                    {eventEditor.repeatWeekly && (
+                      <label>
+                        Repeat count
+                        <select
+                          onChange={(event) =>
+                            setEventEditor((current) =>
+                              current ? { ...current, repeatCount: Number(event.target.value) } : current,
+                            )
+                          }
+                          value={eventEditor.repeatCount}
+                        >
+                          {EVENT_REPEAT_COUNT_OPTIONS.map((count) => (
+                            <option key={count} value={count}>
+                              {count} times
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </fieldset>
+                )}
                 <label>
                   Memo
                   <textarea
@@ -1653,9 +1711,6 @@ export default function App() {
                       Delete
                     </button>
                   )}
-                  <button className="secondary-action" onClick={closeEventEditor} type="button">
-                    Cancel
-                  </button>
                   <button className="primary-action" disabled={eventSaveState === 'saving'} type="submit">
                     {eventSaveState === 'saving' ? 'Saving...' : eventEditor.id ? 'Save' : 'Add'}
                   </button>
