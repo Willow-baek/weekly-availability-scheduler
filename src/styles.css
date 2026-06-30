@@ -33,6 +33,7 @@ button {
   --viewer-color: #272b2f;
   --viewer-header-border: #3d4247;
   --viewer-on-color: #ffffff;
+  --today-head-color: #ffffff;
   min-height: 100vh;
   padding: 24px;
 }
@@ -41,18 +42,21 @@ button {
   --viewer-color: var(--jaiden-color);
   --viewer-header-border: #006365;
   --viewer-on-color: #ffffff;
+  --today-head-color: #f6edbd;
 }
 
 .app-shell.theme-green {
   --viewer-color: var(--hansol-color);
   --viewer-header-border: #e5d788;
   --viewer-on-color: #272b2f;
+  --today-head-color: #008080;
 }
 
 .app-shell.theme-orange {
   --viewer-color: var(--jieun-color);
   --viewer-header-border: #a94220;
   --viewer-on-color: #ffffff;
+  --today-head-color: #f6edbd;
 }
 
 .entry-screen {
@@ -766,6 +770,9 @@ h1 {
 }
 
 .time-head {
+  background: #f0ece5;
+  border-bottom-color: #d7d0c7;
+  color: #8a837b;
   left: 0;
   z-index: 3;
 }
@@ -779,14 +786,8 @@ h1 {
 }
 
 .day-head.today {
+  color: var(--today-head-color);
   box-shadow: inset 0 -4px 0 currentColor;
-}
-
-.day-head small {
-  font-size: 0.56rem;
-  font-weight: 900;
-  line-height: 1;
-  text-transform: uppercase;
 }
 
 .row-fragment {

@@ -1846,7 +1846,6 @@ export default function App() {
             {dayDates.map((day, dayIndex) => (
               <div className={`grid-head day-head ${dayIndex === todayDayIndex ? 'today' : ''}`} key={day.label}>
                 <span>{day.label}</span>
-                {dayIndex === todayDayIndex && <small>Today</small>}
               </div>
             ))}
 
