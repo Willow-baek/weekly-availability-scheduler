@@ -993,22 +993,30 @@ h1 {
   }
 
   .day-head {
-    border-left: 2px solid #54595e;
-    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.08);
+    border-left: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: none;
   }
 
   .day-head:last-of-type {
-    border-right: 2px solid #54595e;
+    border-right: 1px solid rgba(255, 255, 255, 0.16);
   }
 
   .hour-cell {
-    border-left: 2px solid #d0c6ba;
+    border-left: 1px solid #e1d8ce;
     min-width: 68px;
     position: relative;
   }
 
+  .row-fragment .hour-cell:nth-child(odd) .slot-cell {
+    background-color: #fbf8f2;
+  }
+
+  .row-fragment .hour-cell:nth-child(even) .slot-cell {
+    background-color: #ffffff;
+  }
+
   .row-fragment .hour-cell:last-child {
-    border-right: 2px solid #d0c6ba;
+    border-right: 1px solid #e1d8ce;
   }
 
   .slot-segment + .slot-segment {
