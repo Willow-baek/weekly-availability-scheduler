@@ -58,7 +58,7 @@ $$;
 
 create table if not exists public.schedule_events (
   id uuid primary key default gen_random_uuid(),
-  title text not null default 'Zoom meeting',
+  title text not null default 'Meeting',
   note text,
   starts_at timestamptz not null,
   duration_minutes integer not null default 60,

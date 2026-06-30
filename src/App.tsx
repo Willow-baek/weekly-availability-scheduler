@@ -1,16 +1,19 @@
 import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   Clock,
   CloudOff,
   MessageSquarePlus,
+  MonitorSmartphone,
+  MousePointerClick,
   Redo2,
   RefreshCw,
   RotateCcw,
   Save,
+  Smartphone,
   Undo2,
   Users,
   X,
@@ -67,6 +70,8 @@ type EventEditorState = {
   createdBy?: string;
 };
 
+type GuideTopic = 'overview' | 'create';
+
 const PEOPLE: Person[] = [
   {
     name: 'Jaiden',
@@ -106,6 +111,7 @@ const TOUCH_MOVE_CANCEL_DISTANCE = 12;
 const TOUCH_EVENT_DELAY_MS = 780;
 const DEFAULT_EVENT_DURATION_MINUTES = 60;
 const DEFAULT_EVENT_TIME_ZONE = 'Asia/Seoul';
+const DEFAULT_EVENT_TITLE = 'Meeting';
 const EVENT_DURATION_OPTIONS = [
   { label: '20m', value: 20 },
   { label: '30m', value: 30 },
@@ -505,6 +511,9 @@ export default function App() {
   const [eventErrorMessage, setEventErrorMessage] = useState('');
   const [eventEditor, setEventEditor] = useState<EventEditorState | null>(null);
   const [eventSaveState, setEventSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [guideTopic, setGuideTopic] = useState<GuideTopic>('overview');
+  const [isCompactGuide, setIsCompactGuide] = useState(() => window.matchMedia('(max-width: 860px)').matches);
   const [isTouchPaintMode, setIsTouchPaintMode] = useState(false);
   const dragState = useRef<DragState | null>(null);
   const draftScope = useRef('');
@@ -618,6 +627,16 @@ export default function App() {
           : 'Realtime on';
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 860px)');
+    const updateGuideMode = () => setIsCompactGuide(mediaQuery.matches);
+
+    updateGuideMode();
+    mediaQuery.addEventListener('change', updateGuideMode);
+
+    return () => mediaQuery.removeEventListener('change', updateGuideMode);
+  }, []);
+
+  useEffect(() => {
     if (selectedUser) {
       window.localStorage.setItem('availability-user', selectedUser);
     }
@@ -712,7 +731,7 @@ export default function App() {
       setEventRows([]);
       setEventErrorMessage(
         error.message.includes('schedule_events')
-          ? 'Meeting notes need the updated Supabase schema.'
+          ? 'Event details need the updated Supabase schema.'
           : error.message,
       );
       return;
@@ -907,7 +926,7 @@ export default function App() {
       date: defaultFields.date,
       time: defaultFields.time,
       timeZone: DEFAULT_EVENT_TIME_ZONE,
-      title: eventRow?.title ?? 'Zoom meeting',
+      title: eventRow?.title ?? DEFAULT_EVENT_TITLE,
       note: eventRow?.note ?? '',
       durationMinutes: getEventDurationMinutes(eventRow ?? { title: '', starts_at: slot.iso, created_by: selectedUser ?? '' }),
       attendees: normalizeAttendees(eventRow?.attendees),
@@ -934,7 +953,7 @@ export default function App() {
   const saveEvent = useCallback(async () => {
     if (!eventEditor || !selectedUser) return;
 
-    const title = eventEditor.title.trim() || 'Zoom meeting';
+    const title = eventEditor.title.trim() || DEFAULT_EVENT_TITLE;
     const note = eventEditor.note.trim();
     const startsAtIso = localDateTimeFieldsToIso(eventEditor.date, eventEditor.time, eventEditor.timeZone);
     const rowToSave = {
@@ -971,7 +990,7 @@ export default function App() {
         error = fallbackResult.error;
 
         if (!error) {
-          setEventErrorMessage('Meeting saved. Run the updated Supabase schema to keep meeting durations and attendees.');
+          setEventErrorMessage('Event saved. Run the updated Supabase schema to keep event durations and attendees.');
         }
       }
 
@@ -979,9 +998,9 @@ export default function App() {
         setEventSaveState('error');
         setEventErrorMessage(
           error.message.includes('schedule_events')
-            ? 'Meeting notes need the updated Supabase schema.'
+            ? 'Event details need the updated Supabase schema.'
             : error.message.includes('duration_minutes') || error.message.includes('attendees')
-              ? 'Meeting details need the updated Supabase schema.'
+              ? 'Event details need the updated Supabase schema.'
             : error.message,
         );
         return;
@@ -1321,13 +1340,21 @@ export default function App() {
           <header className="topbar">
             <div className="brand-row">
               <h1 className="app-title">🗓️ Team IGP</h1>
-              <div className="eyebrow">
-                <CalendarDays size={15} />
-                {weekLabel} · {weekRange}
-              </div>
             </div>
 
             <div className="header-actions">
+              <button
+                aria-label="Open guide"
+                className="header-icon-action"
+                onClick={() => {
+                  setGuideTopic('overview');
+                  setIsGuideOpen(true);
+                }}
+                title="Guide"
+                type="button"
+              >
+                <CircleHelp size={17} />
+              </button>
               <div
                 aria-label={syncLabel}
                 className={`sync-state ${status}`}
@@ -1357,12 +1384,11 @@ export default function App() {
           )}
 
           {nextEvent && (
-            <section className="upcoming-event" aria-label="Upcoming meeting">
+            <section className="upcoming-event" aria-label="Upcoming event">
               <div>
-                <span className="context-label">Next meeting</span>
+                <span className="context-label">Next event</span>
                 <strong>{nextEvent.title}</strong>
                 <span>{formatEventDateTime(nextEvent.starts_at, displayTimeZone)}</span>
-                <span>by {nextEvent.created_by}</span>
               </div>
               {nextEvent.note && <p>{nextEvent.note}</p>}
             </section>
@@ -1499,15 +1525,6 @@ export default function App() {
             </div>
           </section>
 
-          <details className="guide-panel">
-            <summary>Guide</summary>
-            <div>
-              <span>Tap a slot to mark your availability.</span>
-              <span>Use Drag mode for painting multiple slots on mobile.</span>
-              <span>Long-press or right-click a slot to add a meeting.</span>
-            </div>
-          </details>
-
           <section className="scheduler-nav" aria-label="Week navigation">
             <div className="week-pager">
               <button
@@ -1598,8 +1615,7 @@ export default function App() {
                                       <span className="event-tooltip-item" key={eventRow.id ?? `${eventRow.starts_at}-${eventRow.title}`}>
                                         <strong>{eventRow.title}</strong>
                                         <span>
-                                          {formatEventDateTime(eventRow.starts_at, displayTimeZone)} · {formatDuration(getEventDurationMinutes(eventRow))} · by{' '}
-                                          {eventRow.created_by}
+                                          {formatEventDateTime(eventRow.starts_at, displayTimeZone)} · {formatDuration(getEventDurationMinutes(eventRow))}
                                         </span>
                                         <span>Attendees: {formatAttendeeLabel(eventRow)}</span>
                                         {eventRow.note && <em>{eventRow.note}</em>}
@@ -1619,6 +1635,106 @@ export default function App() {
             })}
           </section>
 
+          {isGuideOpen && (
+            <div className="guide-dialog-backdrop" role="presentation">
+              <section aria-modal="true" className="guide-dialog" role="dialog" aria-label="Scheduler guide">
+                <button aria-label="Close guide" className="event-dialog-close" onClick={() => setIsGuideOpen(false)} type="button">
+                  <X size={16} />
+                </button>
+                <div className="guide-dialog-heading">
+                  <span className="context-label">Guide</span>
+                  <strong>{isCompactGuide ? 'Mobile guide' : 'Web guide'}</strong>
+                  <span>{isCompactGuide ? 'Touch-friendly steps for phone browsers.' : 'Mouse and keyboard steps for desktop browsers.'}</span>
+                </div>
+                <div className="guide-topic-tabs" aria-label="Guide topics">
+                  <button
+                    aria-pressed={guideTopic === 'overview'}
+                    onClick={() => setGuideTopic('overview')}
+                    type="button"
+                  >
+                    Overview
+                  </button>
+                  <button
+                    aria-pressed={guideTopic === 'create'}
+                    onClick={() => setGuideTopic('create')}
+                    type="button"
+                  >
+                    Create event
+                  </button>
+                </div>
+
+                {guideTopic === 'overview' ? (
+                  <div className="guide-card-grid">
+                    <article className="guide-card">
+                      <div className="guide-visual slot-visual" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div>
+                        <strong>Mark availability</strong>
+                        <p>{isCompactGuide ? 'Turn on Drag only when you want to paint many slots. Leave it off for normal scrolling.' : 'Click and drag across slots to mark your available time.'}</p>
+                      </div>
+                    </article>
+                    <article className="guide-card">
+                      <div className="guide-visual event-visual" aria-hidden="true">
+                        <span />
+                        <span />
+                      </div>
+                      <div>
+                        <strong>Read events</strong>
+                        <p>Colored availability stays in the background. Event borders and badges sit on top so they stay visible.</p>
+                      </div>
+                    </article>
+                    <article className="guide-card">
+                      <div className="guide-visual save-visual" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div>
+                        <strong>Save availability</strong>
+                        <p>Your availability changes publish after Save. Events publish immediately when added or edited.</p>
+                      </div>
+                    </article>
+                  </div>
+                ) : (
+                  <div className="guide-create-layout">
+                    <div className="guide-device-card" aria-hidden="true">
+                      {isCompactGuide ? <Smartphone size={34} /> : <MonitorSmartphone size={34} />}
+                      <div className="guide-device-grid">
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <MousePointerClick size={26} />
+                    </div>
+                    <div className="guide-steps">
+                      <strong>Create event</strong>
+                      {isCompactGuide ? (
+                        <>
+                          <p>Long-press the target time slot until the event popup opens.</p>
+                          <p>Set title, date, time basis, duration, repeat count, attendees, and memo.</p>
+                          <p>Tap Add or Save. You do not need to press the availability Save button again.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p>Right-click the target time slot to open the event popup.</p>
+                          <p>Set title, date, time basis, duration, repeat count, attendees, and memo.</p>
+                          <p>Click Add or Save. The event syncs immediately for everyone.</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
           {eventEditor && (
             <div className="event-dialog-backdrop" role="presentation">
               <form
@@ -1628,13 +1744,12 @@ export default function App() {
                   void saveEvent();
                 }}
               >
-                <button aria-label="Close meeting editor" className="event-dialog-close" onClick={closeEventEditor} type="button">
+                <button aria-label="Close event editor" className="event-dialog-close" onClick={closeEventEditor} type="button">
                   <X size={16} />
                 </button>
                 <div className="event-dialog-heading">
-                  <span className="context-label">{eventEditor.id ? 'Edit meeting' : 'Meeting note'}</span>
+                  <span className="context-label">{eventEditor.id ? 'Edit event' : 'New event'}</span>
                   <strong>{eventEditorStartsAtIso ? formatEventDateTime(eventEditorStartsAtIso, eventEditor.timeZone) : ''}</strong>
-                  {eventEditor.createdBy && <span>Created by {eventEditor.createdBy}</span>}
                 </div>
                 <label>
                   Title
@@ -1763,7 +1878,7 @@ export default function App() {
                 </fieldset>
                 {!eventEditor.id && (
                   <fieldset className="repeat-picker">
-                    <legend>Regular meeting</legend>
+                    <legend>Recurring event</legend>
                     <label className="repeat-toggle">
                       <input
                         checked={eventEditor.repeatWeekly}
@@ -1799,7 +1914,7 @@ export default function App() {
                   Memo
                   <textarea
                     onChange={(event) => setEventEditor((current) => (current ? { ...current, note: event.target.value } : current))}
-                    placeholder="Zoom link, agenda, or short memo"
+                    placeholder="Meeting link, agenda, or short memo"
                     value={eventEditor.note}
                   />
                 </label>
