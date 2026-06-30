@@ -110,7 +110,7 @@ const MINUTES_PER_SLOT = 30;
 const TOTAL_WEEKS = 16;
 const HOURS_PER_DAY = 24;
 const SLEEP_HOURS_START = 1;
-const SLEEP_HOURS_END = 6;
+const SLEEP_HOURS_END = 7;
 const TOUCH_MOVE_CANCEL_DISTANCE = 12;
 const TOUCH_EVENT_DELAY_MS = 780;
 const DEFAULT_EVENT_DURATION_MINUTES = 60;
@@ -1594,7 +1594,7 @@ export default function App() {
                 className="secondary-action icon-action"
                 disabled={saveState === 'saving'}
                 onClick={resetDraft}
-                title="Clear this user's week. Save to publish."
+                title="Reset"
                 type="button"
               >
                 <RotateCcw size={15} />
@@ -1625,7 +1625,7 @@ export default function App() {
                 className="secondary-action icon-action touch-paint-action"
                 disabled={saveState === 'saving'}
                 onClick={() => setIsTouchPaintMode((current) => !current)}
-                title={isTouchPaintMode ? 'Touch paint mode on' : 'Touch paint mode off'}
+                title={isTouchPaintMode ? 'Drag mode on' : 'Drag mode'}
                 type="button"
               >
                 <span className="touch-paint-label">Drag</span>
@@ -1636,7 +1636,7 @@ export default function App() {
               aria-expanded={isQuickFillOpen}
               className="quick-fill-trigger"
               onClick={() => setIsQuickFillOpen((current) => !current)}
-              title={isQuickFillOpen ? 'Hide quick fill' : 'Show quick fill'}
+              title={isQuickFillOpen ? 'Hide quick fill' : 'Quick fill'}
               type="button"
             >
               <SlidersHorizontal size={15} />
@@ -1658,7 +1658,7 @@ export default function App() {
                 className="primary-action icon-action"
                 disabled={unsavedCount === 0 || saveState === 'saving'}
                 onClick={saveDraft}
-                title="Save changes"
+                title="Save"
                 type="button"
               >
                 {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
@@ -1738,6 +1738,7 @@ export default function App() {
                 aria-label="Previous week"
                 disabled={weekOffset === 0 || unsavedCount > 0 || saveState === 'saving'}
                 onClick={goToPreviousWeek}
+                title="Previous week"
                 type="button"
               >
                 <ChevronLeft size={17} />
@@ -1749,6 +1750,7 @@ export default function App() {
                 aria-label="Next week"
                 disabled={weekOffset === TOTAL_WEEKS - 1 || unsavedCount > 0 || saveState === 'saving'}
                 onClick={goToNextWeek}
+                title="Next week"
                 type="button"
               >
                 <ChevronRight size={17} />
@@ -1774,10 +1776,10 @@ export default function App() {
                         aria-expanded="false"
                         className="sleep-toggle"
                         onClick={() => setAreSleepHoursCollapsed(false)}
-                        title="Show 01:00-06:00"
+                title="Show 01:00-07:00"
                         type="button"
                       >
-                        <span>01-06</span>
+                        <span>01-07</span>
                         <small>show</small>
                       </button>
                     </div>
@@ -1805,10 +1807,10 @@ export default function App() {
                         aria-expanded="true"
                         className="sleep-toggle"
                         onClick={() => setAreSleepHoursCollapsed(true)}
-                        title="Hide 01:00-06:00"
+                        title="Hide 01:00-07:00"
                         type="button"
                       >
-                        <span>01-06</span>
+                        <span>01-07</span>
                         <small>hide</small>
                       </button>
                     ) : (
@@ -1985,12 +1987,12 @@ export default function App() {
                     </article>
                     <article className="guide-card">
                       <div className="guide-visual sleep-visual" aria-hidden="true">
-                        <strong>01-06</strong>
+                        <strong>01-07</strong>
                         <small>show / hide</small>
                       </div>
                       <div>
                         <strong>Fold sleep hours</strong>
-                        <p>01:00-06:00 is folded by default. Tap 01-06 in the time column when you need to view or edit those slots.</p>
+                        <p>01:00-07:00 is folded by default. Tap 01-07 in the time column when you need to view or edit those slots.</p>
                       </div>
                     </article>
                   </div>
