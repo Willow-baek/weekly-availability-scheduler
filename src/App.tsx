@@ -54,7 +54,10 @@ type PendingTouchState = {
 
 type EventEditorState = {
   id?: string;
-  slot: Slot;
+  startsAtIso: string;
+  date: string;
+  time: string;
+  timeZone: string;
   title: string;
   note: string;
   durationMinutes: number;
@@ -85,6 +88,12 @@ const PEOPLE: Person[] = [
   },
 ];
 
+const VIEW_TIME_ZONES = [
+  { city: 'Seoul', label: 'KST', timezone: 'Asia/Seoul' },
+  { city: 'Sydney', label: 'Sydney time', timezone: 'Australia/Sydney' },
+  { city: 'Perth', label: 'AWST', timezone: 'Australia/Perth' },
+];
+
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
@@ -93,6 +102,7 @@ const HOURS_PER_DAY = 24;
 const TOUCH_MOVE_CANCEL_DISTANCE = 12;
 const TOUCH_EVENT_DELAY_MS = 780;
 const DEFAULT_EVENT_DURATION_MINUTES = 60;
+const DEFAULT_EVENT_TIME_ZONE = 'Asia/Seoul';
 const EVENT_DURATION_OPTIONS = [
   { label: '20m', value: 20 },
   { label: '30m', value: 30 },
@@ -136,6 +146,26 @@ function zonedLocalTimeToUtc(year: number, month: number, day: number, hour: num
   }
 
   return new Date(utc);
+}
+
+function getLocalDateTimeFields(slotTime: string, timeZone: string) {
+  const parts = getZonedParts(new Date(slotTime), timeZone);
+
+  return {
+    date: `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`,
+    time: `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`,
+  };
+}
+
+function localDateTimeFieldsToIso(date: string, time: string, timeZone: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+
+  if ([year, month, day, hour, minute].some((value) => !Number.isFinite(value))) {
+    return new Date().toISOString();
+  }
+
+  return zonedLocalTimeToUtc(year, month, day, hour, minute, timeZone).toISOString();
 }
 
 function addLocalDays(year: number, month: number, day: number, days: number) {
@@ -182,6 +212,10 @@ function formatTimezoneLabel(timeZone: string, date = new Date()) {
   const timeZoneName = parts.find((part) => part.type === 'timeZoneName')?.value ?? timeZone;
 
   return timeZoneName.replace('GMT', 'UTC');
+}
+
+function getTimeZoneOption(timeZone: string) {
+  return VIEW_TIME_ZONES.find((option) => option.timezone === timeZone) ?? VIEW_TIME_ZONES[0];
 }
 
 function buildSlots(timeZone: string, weekOffset: number) {
@@ -405,6 +439,11 @@ export default function App() {
     const saved = window.localStorage.getItem('availability-user');
     return PEOPLE.some((person) => person.name === saved) ? (saved as UserName) : null;
   });
+  const [displayTimeZone, setDisplayTimeZone] = useState(() => {
+    const saved = window.localStorage.getItem('availability-user');
+    return PEOPLE.find((person) => person.name === saved)?.timezone ?? PEOPLE[0].timezone;
+  });
+  const [isTimeZonePickerOpen, setIsTimeZonePickerOpen] = useState(false);
   const [rows, setRows] = useState<AvailabilityRow[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'synced' | 'offline' | 'error'>(
     isSupabaseConfigured ? 'loading' : 'offline',
@@ -430,14 +469,15 @@ export default function App() {
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
     [selectedUser],
   );
+  const displayTimeZoneOption = useMemo(() => getTimeZoneOption(displayTimeZone), [displayTimeZone]);
 
   const { slots, dayDates } = useMemo(
-    () => buildSlots(selectedPerson?.timezone ?? PEOPLE[0].timezone, weekOffset),
-    [selectedPerson?.timezone, weekOffset],
+    () => buildSlots(displayTimeZone, weekOffset),
+    [displayTimeZone, weekOffset],
   );
 
   const eventRange = useMemo(() => {
-    const timeZone = selectedPerson?.timezone ?? PEOPLE[0].timezone;
+    const timeZone = displayTimeZone;
     const firstWeekSlots = buildSlots(timeZone, 0).slots;
     const finalWeekSlots = buildSlots(timeZone, TOTAL_WEEKS - 1).slots;
 
@@ -445,21 +485,20 @@ export default function App() {
       start: firstWeekSlots[0]?.iso ?? new Date().toISOString(),
       end: finalWeekSlots[finalWeekSlots.length - 1]?.iso ?? new Date().toISOString(),
     };
-  }, [selectedPerson?.timezone]);
+  }, [displayTimeZone]);
 
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
   const slotByGridKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
   const slotByIso = useMemo(() => new Map(slots.map((slot) => [slot.iso, slot])), [slots]);
   const weekRange = useMemo(
-    () => formatWeekRange(slots, selectedPerson?.timezone ?? PEOPLE[0].timezone),
-    [selectedPerson?.timezone, slots],
+    () => formatWeekRange(slots, displayTimeZone),
+    [displayTimeZone, slots],
   );
   const weekLabel = `Week ${weekOffset + 1}`;
-  const draftScopeKey = `${selectedUser ?? 'none'}-${weekOffset}`;
+  const draftScopeKey = `${selectedUser ?? 'none'}-${displayTimeZone}-${weekOffset}`;
   const timezoneLabel = useMemo(() => {
-    if (!selectedPerson) return '';
-    return `${selectedPerson.standardLabel} ${formatTimezoneLabel(selectedPerson.timezone, new Date(slots[0]?.iso ?? Date.now()))}`;
-  }, [selectedPerson, slots]);
+    return `${displayTimeZoneOption.label} ${formatTimezoneLabel(displayTimeZone, new Date(slots[0]?.iso ?? Date.now()))}`;
+  }, [displayTimeZone, displayTimeZoneOption.label, slots]);
 
   const availability = useMemo(() => {
     const map = new Map<string, AvailabilityRow>();
@@ -777,11 +816,11 @@ export default function App() {
 
     setRedoDraftStack([]);
     setDraftAvailableSlots(clearedSlots);
-    setExtraClearSlots(buildBufferedWeekSlots(selectedPerson?.timezone ?? PEOPLE[0].timezone, weekOffset));
+    setExtraClearSlots(buildBufferedWeekSlots(displayTimeZone, weekOffset));
     setDirtySlotTimes(getDirtySlotTimes(clearedSlots, remoteSelectedAvailableSlots, slots));
     setSaveState('idle');
     dragState.current = null;
-  }, [draftAvailableSlots, remoteSelectedAvailableSlots, selectedPerson?.timezone, slots, weekOffset]);
+  }, [displayTimeZone, draftAvailableSlots, remoteSelectedAvailableSlots, slots, weekOffset]);
 
   const undoDraft = useCallback(() => {
     const previousDraft = undoDraftStack[undoDraftStack.length - 1];
@@ -814,9 +853,15 @@ export default function App() {
   }, [draftAvailableSlots, redoDraftStack, remoteSelectedAvailableSlots, slots]);
 
   const openEventEditor = useCallback((slot: Slot, eventRow?: MeetingEventRow) => {
+    const startsAtIso = eventRow?.starts_at ?? slot.iso;
+    const defaultFields = getLocalDateTimeFields(startsAtIso, DEFAULT_EVENT_TIME_ZONE);
+
     setEventEditor({
       id: eventRow?.id,
-      slot,
+      startsAtIso,
+      date: defaultFields.date,
+      time: defaultFields.time,
+      timeZone: DEFAULT_EVENT_TIME_ZONE,
       title: eventRow?.title ?? 'Zoom meeting',
       note: eventRow?.note ?? '',
       durationMinutes: getEventDurationMinutes(eventRow ?? { title: '', starts_at: slot.iso, created_by: selectedUser ?? '' }),
@@ -843,10 +888,11 @@ export default function App() {
 
     const title = eventEditor.title.trim() || 'Zoom meeting';
     const note = eventEditor.note.trim();
+    const startsAtIso = localDateTimeFieldsToIso(eventEditor.date, eventEditor.time, eventEditor.timeZone);
     const rowToSave = {
       title,
       note: note || null,
-      starts_at: eventEditor.slot.iso,
+      starts_at: startsAtIso,
       duration_minutes: eventEditor.durationMinutes,
       created_by: eventEditor.createdBy ?? selectedUser,
     };
@@ -1144,13 +1190,29 @@ export default function App() {
     setWeekOffset((current) => Math.min(TOTAL_WEEKS - 1, current + 1));
   };
 
+  const changeDisplayTimeZone = (timeZone: string) => {
+    if (unsavedCount > 0 || saveState === 'saving') return;
+
+    setDisplayTimeZone(timeZone);
+    setIsTimeZonePickerOpen(false);
+  };
+
   const selectUser = (userName: UserName) => {
     if (selectedUser && selectedUser !== userName && (unsavedCount > 0 || saveState === 'saving')) {
       return;
     }
 
+    const person = PEOPLE.find((item) => item.name === userName);
     setSelectedUser(userName);
+    if (person) {
+      setDisplayTimeZone(person.timezone);
+    }
+    setIsTimeZonePickerOpen(false);
   };
+
+  const eventEditorStartsAtIso = eventEditor
+    ? localDateTimeFieldsToIso(eventEditor.date, eventEditor.time, eventEditor.timeZone)
+    : null;
 
   return (
     <main className="app-shell">
@@ -1248,7 +1310,7 @@ export default function App() {
               <div>
                 <span className="context-label">Next meeting</span>
                 <strong>{nextEvent.title}</strong>
-                <span>{formatEventDateTime(nextEvent.starts_at, selectedPerson.timezone)}</span>
+                <span>{formatEventDateTime(nextEvent.starts_at, displayTimeZone)}</span>
                 <span>by {nextEvent.created_by}</span>
               </div>
               {nextEvent.note && <p>{nextEvent.note}</p>}
@@ -1259,9 +1321,36 @@ export default function App() {
             <div>
               <span className="context-label">Viewing as</span>
               <strong>{selectedPerson.name}</strong>
-              <span>
-                {selectedPerson.city}, {timezoneLabel}
-              </span>
+              <div className="timezone-switcher">
+                <button
+                  aria-expanded={isTimeZonePickerOpen}
+                  className="timezone-trigger"
+                  disabled={unsavedCount > 0 || saveState === 'saving'}
+                  onClick={() => setIsTimeZonePickerOpen((current) => !current)}
+                  title={unsavedCount > 0 ? 'Save or undo changes before changing time basis' : 'Change display time basis'}
+                  type="button"
+                >
+                  {displayTimeZoneOption.city}, {timezoneLabel}
+                </button>
+                {isTimeZonePickerOpen && (
+                  <div className="timezone-menu" role="menu">
+                    {VIEW_TIME_ZONES.map((option) => (
+                      <button
+                        aria-pressed={displayTimeZone === option.timezone}
+                        key={option.timezone}
+                        onClick={() => changeDisplayTimeZone(option.timezone)}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <span>{option.city}</span>
+                        <small>
+                          {option.label} {formatTimezoneLabel(option.timezone, new Date(slots[0]?.iso ?? Date.now()))}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="legend" aria-label="Availability legend">
               {PEOPLE.map((person) => (
@@ -1422,7 +1511,7 @@ export default function App() {
                                       <span className="event-tooltip-item" key={eventRow.id ?? `${eventRow.starts_at}-${eventRow.title}`}>
                                         <strong>{eventRow.title}</strong>
                                         <span>
-                                          {formatEventDateTime(eventRow.starts_at, selectedPerson.timezone)} · {formatDuration(getEventDurationMinutes(eventRow))} · by{' '}
+                                          {formatEventDateTime(eventRow.starts_at, displayTimeZone)} · {formatDuration(getEventDurationMinutes(eventRow))} · by{' '}
                                           {eventRow.created_by}
                                         </span>
                                         {eventRow.note && <em>{eventRow.note}</em>}
@@ -1453,7 +1542,7 @@ export default function App() {
               >
                 <div>
                   <span className="context-label">{eventEditor.id ? 'Edit meeting' : 'Meeting note'}</span>
-                  <strong>{formatEventDateTime(eventEditor.slot.iso, selectedPerson.timezone)}</strong>
+                  <strong>{eventEditorStartsAtIso ? formatEventDateTime(eventEditorStartsAtIso, eventEditor.timeZone) : ''}</strong>
                   {eventEditor.createdBy && <span>Created by {eventEditor.createdBy}</span>}
                 </div>
                 <label>
@@ -1464,6 +1553,72 @@ export default function App() {
                     value={eventEditor.title}
                   />
                 </label>
+                <div className="event-time-fields">
+                  <label>
+                    Date
+                    <input
+                      onChange={(event) =>
+                        setEventEditor((current) =>
+                          current
+                            ? {
+                                ...current,
+                                date: event.target.value,
+                                startsAtIso: localDateTimeFieldsToIso(event.target.value, current.time, current.timeZone),
+                              }
+                            : current,
+                        )
+                      }
+                      type="date"
+                      value={eventEditor.date}
+                    />
+                  </label>
+                  <label>
+                    Time
+                    <input
+                      onChange={(event) =>
+                        setEventEditor((current) =>
+                          current
+                            ? {
+                                ...current,
+                                time: event.target.value,
+                                startsAtIso: localDateTimeFieldsToIso(current.date, event.target.value, current.timeZone),
+                              }
+                            : current,
+                        )
+                      }
+                      step={600}
+                      type="time"
+                      value={eventEditor.time}
+                    />
+                  </label>
+                  <label>
+                    Time basis
+                    <select
+                      onChange={(event) =>
+                        setEventEditor((current) => {
+                          if (!current) return current;
+
+                          const currentIso = localDateTimeFieldsToIso(current.date, current.time, current.timeZone);
+                          const nextFields = getLocalDateTimeFields(currentIso, event.target.value);
+
+                          return {
+                            ...current,
+                            ...nextFields,
+                            startsAtIso: currentIso,
+                            timeZone: event.target.value,
+                          };
+                        })
+                      }
+                      value={eventEditor.timeZone}
+                    >
+                      {VIEW_TIME_ZONES.map((option) => (
+                        <option key={option.timezone} value={option.timezone}>
+                          {option.city} · {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <fieldset className="duration-picker">
                   <legend>Duration</legend>
                   <div>
