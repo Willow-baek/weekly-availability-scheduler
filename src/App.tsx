@@ -1257,8 +1257,9 @@ export default function App() {
                   title={selectedUser !== person.name && unsavedCount > 0 ? 'Save or undo changes before switching users' : person.name}
                   type="button"
                 >
+                  <span aria-hidden="true" className="person-chip-dot" />
                   {selectedUser === person.name && <Check size={14} />}
-                  {person.name}
+                  <span className="person-chip-label">{person.name}</span>
                 </button>
               ))}
             </div>

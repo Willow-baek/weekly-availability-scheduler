@@ -252,6 +252,10 @@ h1 {
   padding: 7px 12px;
 }
 
+.person-chip-dot {
+  display: none;
+}
+
 .person-chip[aria-pressed="true"] {
   color: #ffffff;
 }
@@ -830,9 +834,78 @@ h1 {
   }
 
   .person-chip {
-    font-size: 0.9rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    height: 34px;
     min-height: 34px;
-    padding: 7px 8px;
+    padding: 0;
+    position: relative;
+    width: 34px;
+  }
+
+  .person-chip-label {
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .person-chip-dot {
+    border-radius: 999px;
+    display: block;
+    height: 18px;
+    width: 18px;
+  }
+
+  .person-chip.blue .person-chip-dot {
+    background: var(--jaiden-color);
+  }
+
+  .person-chip.green .person-chip-dot {
+    background: var(--hansol-color);
+    border: 1px solid #d8c977;
+  }
+
+  .person-chip.orange .person-chip-dot {
+    background: var(--jieun-color);
+  }
+
+  .person-chip[aria-pressed="true"] {
+    background: #ffffff;
+    box-shadow:
+      0 0 0 2px #ffffff,
+      0 0 0 4px currentColor;
+  }
+
+  .person-chip.blue[aria-pressed="true"] {
+    border-color: var(--jaiden-color);
+    color: var(--jaiden-color);
+  }
+
+  .person-chip.green[aria-pressed="true"] {
+    border-color: #d8c977;
+    color: #b29b18;
+  }
+
+  .person-chip.orange[aria-pressed="true"] {
+    border-color: var(--jieun-color);
+    color: var(--jieun-color);
+  }
+
+  .person-chip[aria-pressed="true"] svg {
+    background: currentColor;
+    border-radius: 999px;
+    color: #ffffff;
+    height: 14px;
+    padding: 2px;
+    position: absolute;
+    right: -3px;
+    top: -3px;
+    width: 14px;
   }
 
   .scheduler {
