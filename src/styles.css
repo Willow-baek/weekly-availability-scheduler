@@ -513,6 +513,28 @@ h1 {
   padding: 10px 12px;
 }
 
+.quick-fill-trigger {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-radius: 999px;
+  color: #272b2f;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 850;
+  gap: 8px;
+  justify-content: center;
+  min-height: 38px;
+  min-width: 142px;
+  padding: 8px 14px;
+}
+
+.quick-fill-trigger[aria-expanded="true"] {
+  background: #272b2f;
+  border-color: #272b2f;
+  color: #ffffff;
+}
+
 .quick-fill-meta {
   align-items: baseline;
   display: inline-flex;
@@ -1593,8 +1615,15 @@ h1 {
   .controls-row {
     display: grid;
     gap: 8px;
-    grid-template-columns: 122px minmax(0, 1fr) 42px;
+    grid-template-columns: 122px minmax(112px, 1fr) 42px;
     padding: 8px;
+  }
+
+  .quick-fill-trigger {
+    min-height: 40px;
+    min-width: 0;
+    padding: 8px 10px;
+    width: 100%;
   }
 
   .quick-fill-panel {

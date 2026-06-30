@@ -1,6 +1,5 @@
 import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Check,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -13,6 +12,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  SlidersHorizontal,
   Smartphone,
   Undo2,
   Users,
@@ -581,6 +581,7 @@ export default function App() {
   const [quickFillStart, setQuickFillStart] = useState('07:00');
   const [quickFillEnd, setQuickFillEnd] = useState('10:00');
   const [quickFillDayMode, setQuickFillDayMode] = useState<QuickFillDayMode>('all');
+  const [isQuickFillOpen, setIsQuickFillOpen] = useState(false);
   const [areSleepHoursCollapsed, setAreSleepHoursCollapsed] = useState(true);
   const [eventRows, setEventRows] = useState<MeetingEventRow[]>([]);
   const [eventErrorMessage, setEventErrorMessage] = useState('');
@@ -1631,23 +1632,16 @@ export default function App() {
               </button>
             </div>
 
-            <div className="person-picker compact" aria-label="Current user">
-              {PEOPLE.map((person) => (
-                <button
-                  aria-pressed={selectedUser === person.name}
-                  className={`person-chip ${person.color}`}
-                  disabled={selectedUser !== person.name && (unsavedCount > 0 || saveState === 'saving')}
-                  key={person.name}
-                  onClick={() => selectUser(person.name)}
-                  title={selectedUser !== person.name && unsavedCount > 0 ? 'Save or undo changes before switching users' : person.name}
-                  type="button"
-                >
-                  <span aria-hidden="true" className="person-chip-dot" />
-                  {selectedUser === person.name && <Check size={14} />}
-                  <span className="person-chip-label">{person.name}</span>
-                </button>
-              ))}
-            </div>
+            <button
+              aria-expanded={isQuickFillOpen}
+              className="quick-fill-trigger"
+              onClick={() => setIsQuickFillOpen((current) => !current)}
+              title={isQuickFillOpen ? 'Hide quick fill' : 'Show quick fill'}
+              type="button"
+            >
+              <SlidersHorizontal size={15} />
+              <span>Quick fill</span>
+            </button>
 
             <div className="control-side right">
               <span className={unsavedCount > 0 ? 'save-note dirty' : 'save-note'}>
@@ -1672,69 +1666,71 @@ export default function App() {
             </div>
           </section>
 
-          <section className="quick-fill-panel" aria-label="Quick fill availability">
-            <div className="quick-fill-meta">
-              <span className="context-label">Quick fill</span>
-              <small>Draft only. Save to publish.</small>
-            </div>
-            <label>
-              <span>From</span>
-              <select
-                onChange={(event) => setQuickFillStart(event.target.value)}
-                value={quickFillStart}
-              >
-                {QUICK_FILL_TIME_OPTIONS.slice(0, -1).map((timeOption) => (
-                  <option key={timeOption} value={timeOption}>
-                    {timeOption}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>To</span>
-              <select
-                onChange={(event) => setQuickFillEnd(event.target.value)}
-                value={quickFillEnd}
-              >
-                {QUICK_FILL_TIME_OPTIONS.slice(1).map((timeOption) => (
-                  <option key={timeOption} value={timeOption}>
-                    {timeOption}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Days</span>
-              <select
-                onChange={(event) => setQuickFillDayMode(event.target.value as QuickFillDayMode)}
-                value={quickFillDayMode}
-              >
-                {QUICK_FILL_DAY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="quick-fill-actions">
-              <button
-                className="secondary-action"
-                disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
-                onClick={() => applyQuickFill('week')}
-                type="button"
-              >
-                This week
-              </button>
-              <button
-                className="primary-action"
-                disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
-                onClick={() => applyQuickFill('all-weeks')}
-                type="button"
-              >
-                All weeks
-              </button>
-            </div>
-          </section>
+          {isQuickFillOpen && (
+            <section className="quick-fill-panel" aria-label="Quick fill availability">
+              <div className="quick-fill-meta">
+                <span className="context-label">Quick fill</span>
+                <small>Draft only. Save to publish.</small>
+              </div>
+              <label>
+                <span>From</span>
+                <select
+                  onChange={(event) => setQuickFillStart(event.target.value)}
+                  value={quickFillStart}
+                >
+                  {QUICK_FILL_TIME_OPTIONS.slice(0, -1).map((timeOption) => (
+                    <option key={timeOption} value={timeOption}>
+                      {timeOption}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>To</span>
+                <select
+                  onChange={(event) => setQuickFillEnd(event.target.value)}
+                  value={quickFillEnd}
+                >
+                  {QUICK_FILL_TIME_OPTIONS.slice(1).map((timeOption) => (
+                    <option key={timeOption} value={timeOption}>
+                      {timeOption}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Days</span>
+                <select
+                  onChange={(event) => setQuickFillDayMode(event.target.value as QuickFillDayMode)}
+                  value={quickFillDayMode}
+                >
+                  {QUICK_FILL_DAY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="quick-fill-actions">
+                <button
+                  className="secondary-action"
+                  disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
+                  onClick={() => applyQuickFill('week')}
+                  type="button"
+                >
+                  This week
+                </button>
+                <button
+                  className="primary-action"
+                  disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
+                  onClick={() => applyQuickFill('all-weeks')}
+                  type="button"
+                >
+                  All weeks
+                </button>
+              </div>
+            </section>
+          )}
 
           <section className="scheduler-nav" aria-label="Week navigation">
             <div className="week-pager">
@@ -1952,7 +1948,7 @@ export default function App() {
                       </div>
                       <div>
                         <strong>Repeat a regular time</strong>
-                        <p>Use Quick fill for regular availability like 07:00-10:00. You can still remove a few slots by hand before pressing Save.</p>
+                        <p>Tap the center Quick fill button for regular availability like 07:00-10:00. You can still remove a few slots by hand before pressing Save.</p>
                       </div>
                     </article>
                     <article className="guide-card">
