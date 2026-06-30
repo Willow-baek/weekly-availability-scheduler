@@ -77,13 +77,27 @@ h1 {
 }
 
 .topbar {
-  align-items: flex-end;
+  align-items: center;
   display: flex;
   gap: 20px;
   justify-content: space-between;
-  margin: 0 auto 16px;
+  margin: 0 auto 12px;
   max-width: 1480px;
   position: relative;
+}
+
+.brand-row {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.app-title {
+  font-size: clamp(1.35rem, 2.3vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.05;
 }
 
 .eyebrow {
@@ -92,7 +106,7 @@ h1 {
   display: flex;
   font-size: 0.9rem;
   gap: 8px;
-  margin-bottom: 8px;
+  margin: 0;
 }
 
 .header-actions {
@@ -138,6 +152,21 @@ h1 {
   min-width: 92px;
   padding: 7px 12px;
   text-align: center;
+}
+
+.scheduler-nav {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0 auto 8px;
+  max-width: 1480px;
+}
+
+.scheduler-nav > span {
+  color: #6c645b;
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .sync-state {
@@ -291,7 +320,8 @@ h1 {
 
 .notice,
 .context-row,
-.controls-row {
+.controls-row,
+.guide-panel {
   background: #ffffff;
   border: 1px solid #ded8cf;
   border-radius: 8px;
@@ -316,6 +346,28 @@ h1 {
 .notice.event-warning {
   border-color: #e2c970;
   color: #7a5f12;
+}
+
+.guide-panel {
+  color: #5b554e;
+  font-size: 0.84rem;
+  padding: 10px 12px;
+}
+
+.guide-panel summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.guide-panel > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-top: 9px;
+}
+
+.guide-panel span {
+  color: #68615a;
 }
 
 .context-row {
@@ -980,8 +1032,33 @@ h1 {
     top: 0;
   }
 
-  .topbar h1 {
+  .brand-row {
     padding-right: 42px;
+  }
+
+  .app-title {
+    font-size: 1.45rem;
+  }
+
+  .scheduler-nav {
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+
+  .scheduler-nav > span {
+    font-size: 0.78rem;
+  }
+
+  .guide-panel {
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+    padding: 9px 10px;
+  }
+
+  .guide-panel > div {
+    display: grid;
+    gap: 6px;
   }
 
   .controls-row {

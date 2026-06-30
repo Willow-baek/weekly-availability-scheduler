@@ -1286,12 +1286,12 @@ export default function App() {
       {selectedPerson && (
         <>
           <header className="topbar">
-            <div>
+            <div className="brand-row">
+              <h1 className="app-title">🗓️ Team IGP</h1>
               <div className="eyebrow">
-                <CalendarDays size={16} />
+                <CalendarDays size={15} />
                 {weekLabel} · {weekRange}
               </div>
-              <h1>Weekly Availability</h1>
             </div>
 
             <div className="header-actions">
@@ -1303,28 +1303,6 @@ export default function App() {
               >
                 {status === 'loading' ? <RefreshCw size={15} className="spin" /> : <Clock size={15} />}
                 <span className="sr-only">{syncLabel}</span>
-              </div>
-
-              <div className="week-pager" aria-label="Week navigation">
-                <button
-                  aria-label="Previous week"
-                  disabled={weekOffset === 0 || unsavedCount > 0 || saveState === 'saving'}
-                  onClick={goToPreviousWeek}
-                  type="button"
-                >
-                  <ChevronLeft size={17} />
-                </button>
-                <span>
-                  {weekLabel} / {TOTAL_WEEKS}
-                </span>
-                <button
-                  aria-label="Next week"
-                  disabled={weekOffset === TOTAL_WEEKS - 1 || unsavedCount > 0 || saveState === 'saving'}
-                  onClick={goToNextWeek}
-                  type="button"
-                >
-                  <ChevronRight size={17} />
-                </button>
               </div>
             </div>
           </header>
@@ -1486,6 +1464,40 @@ export default function App() {
                 {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
               </button>
             </div>
+          </section>
+
+          <details className="guide-panel">
+            <summary>Guide</summary>
+            <div>
+              <span>Tap a slot to mark your availability.</span>
+              <span>Use Drag mode for painting multiple slots on mobile.</span>
+              <span>Long-press or right-click a slot to add a meeting.</span>
+            </div>
+          </details>
+
+          <section className="scheduler-nav" aria-label="Week navigation">
+            <div className="week-pager">
+              <button
+                aria-label="Previous week"
+                disabled={weekOffset === 0 || unsavedCount > 0 || saveState === 'saving'}
+                onClick={goToPreviousWeek}
+                type="button"
+              >
+                <ChevronLeft size={17} />
+              </button>
+              <span>
+                {weekLabel} / {TOTAL_WEEKS}
+              </span>
+              <button
+                aria-label="Next week"
+                disabled={weekOffset === TOTAL_WEEKS - 1 || unsavedCount > 0 || saveState === 'saving'}
+                onClick={goToNextWeek}
+                type="button"
+              >
+                <ChevronRight size={17} />
+              </button>
+            </div>
+            <span>{weekRange}</span>
           </section>
 
           <section className={`scheduler ${isTouchPaintMode ? 'paint-mode' : ''}`} aria-label="Weekly availability grid">
