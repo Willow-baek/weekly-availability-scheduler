@@ -568,7 +568,14 @@ h1 {
   gap: 6px;
 }
 
-.quick-fill-panel label span {
+.quick-fill-days-field {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.quick-fill-panel label span,
+.quick-fill-days-field > span {
   color: #746d65;
   font-size: 0.72rem;
   font-weight: 800;
@@ -583,6 +590,34 @@ h1 {
   font: inherit;
   min-height: 34px;
   padding: 6px 28px 6px 9px;
+}
+
+.quick-fill-days {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(7, minmax(22px, 1fr));
+  min-width: 190px;
+}
+
+.quick-fill-day {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d7d0c7;
+  border-radius: 6px;
+  color: #5e574f;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0;
+}
+
+.quick-fill-day[aria-pressed="true"] {
+  background: var(--viewer-color);
+  border-color: var(--viewer-color);
+  color: var(--viewer-on-color);
 }
 
 .quick-fill-actions {
@@ -1668,13 +1703,16 @@ h1 {
     text-align: right;
   }
 
-  .quick-fill-panel label {
+  .quick-fill-panel label,
+  .quick-fill-days-field {
     align-items: stretch;
     display: grid;
     gap: 4px;
+    min-width: 0;
   }
 
-  .quick-fill-panel label span {
+  .quick-fill-panel label span,
+  .quick-fill-days-field > span {
     font-size: 0.66rem;
   }
 
@@ -1682,6 +1720,19 @@ h1 {
     min-height: 32px;
     padding: 5px 22px 5px 7px;
     width: 100%;
+  }
+
+  .quick-fill-days {
+    gap: 2px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    min-width: 0;
+    width: 100%;
+  }
+
+  .quick-fill-day {
+    border-radius: 5px;
+    font-size: 0.54rem;
+    min-height: 32px;
   }
 
   .quick-fill-actions {

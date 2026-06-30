@@ -72,7 +72,6 @@ type EventEditorState = {
 };
 
 type GuideTopic = 'overview' | 'create';
-type QuickFillDayMode = 'all' | 'weekdays' | 'weekend';
 type QuickFillScope = 'week' | 'all-weeks';
 
 const PEOPLE: Person[] = [
@@ -106,6 +105,15 @@ const VIEW_TIME_ZONES = [
 ];
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const QUICK_FILL_DAY_OPTIONS = [
+  { label: 'Mon', shortLabel: 'Mo', value: 0 },
+  { label: 'Tue', shortLabel: 'Tu', value: 1 },
+  { label: 'Wed', shortLabel: 'We', value: 2 },
+  { label: 'Thu', shortLabel: 'Th', value: 3 },
+  { label: 'Fri', shortLabel: 'Fr', value: 4 },
+  { label: 'Sat', shortLabel: 'Sa', value: 5 },
+  { label: 'Sun', shortLabel: 'Su', value: 6 },
+];
 const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
 const TOTAL_WEEKS = 16;
@@ -132,12 +140,6 @@ const QUICK_FILL_TIME_OPTIONS = Array.from({ length: SLOT_COUNT + 1 }, (_, index
   const minute = totalMinutes % 60;
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 });
-const QUICK_FILL_DAY_OPTIONS: Array<{ label: string; value: QuickFillDayMode }> = [
-  { label: 'Every day', value: 'all' },
-  { label: 'Weekdays', value: 'weekdays' },
-  { label: 'Weekend', value: 'weekend' },
-];
-
 function timeLabelToMinutes(timeLabel: string) {
   const [hour = '0', minute = '0'] = timeLabel.split(':');
   return Number(hour) * 60 + Number(minute);
@@ -582,7 +584,7 @@ export default function App() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [quickFillStart, setQuickFillStart] = useState('07:00');
   const [quickFillEnd, setQuickFillEnd] = useState('10:00');
-  const [quickFillDayMode, setQuickFillDayMode] = useState<QuickFillDayMode>('all');
+  const [quickFillDays, setQuickFillDays] = useState<Set<number>>(() => new Set(QUICK_FILL_DAY_OPTIONS.map((option) => option.value)));
   const [isQuickFillOpen, setIsQuickFillOpen] = useState(false);
   const [areSleepHoursCollapsed, setAreSleepHoursCollapsed] = useState(true);
   const [eventRows, setEventRows] = useState<MeetingEventRow[]>([]);
@@ -982,10 +984,7 @@ export default function App() {
       const targetSlots = sourceSlots.filter((slot) => {
         const slotMinutes = slot.slotIndex * MINUTES_PER_SLOT;
         const isInTimeRange = slotMinutes >= startMinutes && slotMinutes < endMinutes;
-        const isInDayRange =
-          quickFillDayMode === 'all' ||
-          (quickFillDayMode === 'weekdays' && slot.dayIndex < 5) ||
-          (quickFillDayMode === 'weekend' && slot.dayIndex >= 5);
+        const isInDayRange = quickFillDays.has(slot.dayIndex);
 
         return isInTimeRange && isInDayRange;
       });
@@ -1024,7 +1023,7 @@ export default function App() {
         return next;
       });
     },
-    [allWeekSlots, quickFillDayMode, quickFillEnd, quickFillStart, remoteSelectedAvailableSlots, selectedUser, slots],
+    [allWeekSlots, quickFillDays, quickFillEnd, quickFillStart, remoteSelectedAvailableSlots, selectedUser, slots],
   );
 
   const resetDraft = useCallback(() => {
@@ -1723,23 +1722,43 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <label>
+              <div className="quick-fill-days-field">
                 <span>Days</span>
-                <select
-                  onChange={(event) => setQuickFillDayMode(event.target.value as QuickFillDayMode)}
-                  value={quickFillDayMode}
-                >
-                  {QUICK_FILL_DAY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <div className="quick-fill-days" role="group" aria-label="Quick fill days">
+                  {QUICK_FILL_DAY_OPTIONS.map((option) => {
+                    const isSelected = quickFillDays.has(option.value);
+
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className="quick-fill-day"
+                        key={option.value}
+                        onClick={() =>
+                          setQuickFillDays((current) => {
+                            const next = new Set(current);
+
+                            if (next.has(option.value)) {
+                              next.delete(option.value);
+                            } else {
+                              next.add(option.value);
+                            }
+
+                            return next;
+                          })
+                        }
+                        title={option.label}
+                        type="button"
+                      >
+                        {option.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="quick-fill-actions">
                 <button
                   className="secondary-action"
-                  disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
+                  disabled={saveState === 'saving' || quickFillDays.size === 0 || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
                   onClick={() => applyQuickFill('week')}
                   type="button"
                 >
@@ -1747,7 +1766,7 @@ export default function App() {
                 </button>
                 <button
                   className="primary-action"
-                  disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
+                  disabled={saveState === 'saving' || quickFillDays.size === 0 || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
                   onClick={() => applyQuickFill('all-weeks')}
                   type="button"
                 >
@@ -1975,7 +1994,7 @@ export default function App() {
                       </div>
                       <div>
                         <strong>Repeat a regular time</strong>
-                        <p>Tap the center Quick fill button for regular availability like 07:00-10:00. You can still remove a few slots by hand before pressing Save.</p>
+                        <p>Tap the center Quick fill button for regular availability like 07:00-10:00, then choose the exact weekdays you want. You can still remove a few slots by hand before pressing Save.</p>
                       </div>
                     </article>
                     <article className="guide-card">
