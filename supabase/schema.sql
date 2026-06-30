@@ -74,6 +74,9 @@ alter table public.schedule_events
 alter table public.schedule_events
   add column if not exists attendees text[] not null default array['Jaiden', 'Hansol', 'Jieun']::text[];
 
+alter table public.schedule_events
+  alter column title set default 'Meeting';
+
 create index if not exists schedule_events_starts_at_idx
   on public.schedule_events (starts_at);
 
