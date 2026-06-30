@@ -168,17 +168,39 @@ h1 {
 
 .scheduler-nav {
   align-items: center;
-  display: flex;
+  display: grid;
   gap: 12px;
-  justify-content: space-between;
+  grid-template-columns: 1fr auto 1fr;
   margin: 0 auto 8px;
   max-width: 1480px;
 }
 
-.scheduler-nav > span {
+.week-range-label {
   color: #6c645b;
   font-size: 0.88rem;
   font-weight: 700;
+  justify-self: end;
+}
+
+.today-action {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-radius: 999px;
+  color: #3c3834;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.84rem;
+  font-weight: 800;
+  justify-content: center;
+  justify-self: start;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+
+.today-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .sync-state,
@@ -749,9 +771,22 @@ h1 {
 }
 
 .day-head {
+  flex-direction: column;
+  gap: 2px;
   justify-content: center;
   text-align: center;
   white-space: nowrap;
+}
+
+.day-head.today {
+  box-shadow: inset 0 -4px 0 currentColor;
+}
+
+.day-head small {
+  font-size: 0.56rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .row-fragment {
@@ -835,6 +870,30 @@ h1 {
   grid-template-rows: repeat(2, minmax(20px, 1fr));
   min-height: 40px;
   min-width: 76px;
+  position: relative;
+}
+
+.now-marker {
+  background: #e11d48;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72);
+  height: 2px;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: var(--now-top);
+  z-index: 5;
+}
+
+.now-marker::before {
+  background: #e11d48;
+  border-radius: 999px;
+  content: "";
+  height: 6px;
+  left: -3px;
+  position: absolute;
+  top: -2px;
+  width: 6px;
 }
 
 .slot-cell {
@@ -1639,7 +1698,7 @@ h1 {
     margin-bottom: 7px;
   }
 
-  .scheduler-nav > span {
+  .week-range-label {
     font-size: 0.78rem;
   }
 
@@ -1857,6 +1916,10 @@ h1 {
   .day-head {
     border-left: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: none;
+  }
+
+  .day-head.today {
+    box-shadow: inset 0 -4px 0 currentColor;
   }
 
   .day-head:last-of-type {

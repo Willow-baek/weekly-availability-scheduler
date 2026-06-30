@@ -586,6 +586,7 @@ export default function App() {
   const [guideTopic, setGuideTopic] = useState<GuideTopic>('overview');
   const [isCompactGuide, setIsCompactGuide] = useState(() => window.matchMedia('(max-width: 860px)').matches);
   const [isTouchPaintMode, setIsTouchPaintMode] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const dragState = useRef<DragState | null>(null);
   const draftScope = useRef('');
   const pendingTouch = useRef<PendingTouchState | null>(null);
@@ -624,6 +625,21 @@ export default function App() {
     () => formatWeekRange(slots, displayTimeZone),
     [displayTimeZone, slots],
   );
+  const currentDisplayParts = useMemo(() => getZonedParts(currentTime, displayTimeZone), [currentTime, displayTimeZone]);
+  const todayDayIndex = useMemo(
+    () =>
+      dayDates.findIndex(
+        (day) => day.year === currentDisplayParts.year && day.month === currentDisplayParts.month && day.day === currentDisplayParts.day,
+      ),
+    [currentDisplayParts.day, currentDisplayParts.month, currentDisplayParts.year, dayDates],
+  );
+  const currentTimePosition = weekOffset === 0 && todayDayIndex >= 0
+    ? {
+        dayIndex: todayDayIndex,
+        hour: currentDisplayParts.hour,
+        topPercent: (currentDisplayParts.minute / 60) * 100,
+      }
+    : null;
   const weekLabel = `Week ${weekOffset + 1}`;
   const draftScopeKey = `${selectedUser ?? 'none'}-${displayTimeZone}-${weekOffset}`;
   const timezoneLabel = useMemo(() => {
@@ -711,6 +727,15 @@ export default function App() {
     mediaQuery.addEventListener('change', updateGuideMode);
 
     return () => mediaQuery.removeEventListener('change', updateGuideMode);
+  }, []);
+
+  useEffect(() => {
+    const updateCurrentTime = () => setCurrentTime(new Date());
+    const timerId = window.setInterval(updateCurrentTime, 60_000);
+
+    updateCurrentTime();
+
+    return () => window.clearInterval(timerId);
   }, []);
 
   useEffect(() => {
@@ -1437,6 +1462,11 @@ export default function App() {
     setWeekOffset((current) => Math.min(TOTAL_WEEKS - 1, current + 1));
   };
 
+  const goToToday = () => {
+    if (unsavedCount > 0 || saveState === 'saving') return;
+    setWeekOffset(0);
+  };
+
   const changeDisplayTimeZone = (timeZone: string) => {
     if (unsavedCount > 0 || saveState === 'saving') return;
 
@@ -1768,6 +1798,15 @@ export default function App() {
           )}
 
           <section className="scheduler-nav" aria-label="Week navigation">
+            <button
+              className="today-action"
+              disabled={weekOffset === 0 || unsavedCount > 0 || saveState === 'saving'}
+              onClick={goToToday}
+              title="Today"
+              type="button"
+            >
+              Today
+            </button>
             <div className="week-pager">
               <button
                 aria-label="Previous week"
@@ -1791,14 +1830,15 @@ export default function App() {
                 <ChevronRight size={17} />
               </button>
             </div>
-            <span>{weekRange}</span>
+            <span className="week-range-label">{weekRange}</span>
           </section>
 
           <section className={`scheduler ${isTouchPaintMode ? 'paint-mode' : ''}`} aria-label="Weekly availability grid">
             <div className="grid-head time-head">Time</div>
-            {dayDates.map((day) => (
-              <div className="grid-head day-head" key={day.label}>
-                {day.label}
+            {dayDates.map((day, dayIndex) => (
+              <div className={`grid-head day-head ${dayIndex === todayDayIndex ? 'today' : ''}`} key={day.label}>
+                <span>{day.label}</span>
+                {dayIndex === todayDayIndex && <small>Today</small>}
               </div>
             ))}
 
@@ -1860,6 +1900,13 @@ export default function App() {
 
                     return (
                       <div className={`hour-cell ${periodClass}`} key={`${dayIndex}-${hour}`}>
+                        {currentTimePosition?.dayIndex === dayIndex && currentTimePosition.hour === hour && (
+                          <span
+                            aria-hidden="true"
+                            className="now-marker"
+                            style={{ '--now-top': `${currentTimePosition.topPercent}%` } as CSSProperties}
+                          />
+                        )}
                         {halfHourSlots.map((slot) => {
                           const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
                           const slotEvents = eventsBySlot.get(slot.iso) ?? [];
