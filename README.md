@@ -13,7 +13,7 @@ Then enable GitHub Pages with **Source: GitHub Actions** in the repository setti
 
 ## Setup
 
-1. Create or update the Supabase tables by running `supabase/schema.sql` in the Supabase SQL editor.
+1. Create or update the Supabase tables by running `supabase/schema.sql` in the Supabase SQL editor. Re-run it after feature updates to add new columns such as meeting duration.
 2. Copy `.env.example` to `.env.local`.
 3. Add your Supabase project URL and anon key:
 

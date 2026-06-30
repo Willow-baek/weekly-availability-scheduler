@@ -53,9 +53,12 @@ type PendingTouchState = {
 };
 
 type EventEditorState = {
+  id?: string;
   slot: Slot;
   title: string;
   note: string;
+  durationMinutes: number;
+  createdBy?: string;
 };
 
 const PEOPLE: Person[] = [
@@ -89,6 +92,14 @@ const TOTAL_WEEKS = 16;
 const HOURS_PER_DAY = 24;
 const TOUCH_MOVE_CANCEL_DISTANCE = 12;
 const TOUCH_EVENT_DELAY_MS = 780;
+const DEFAULT_EVENT_DURATION_MINUTES = 60;
+const EVENT_DURATION_OPTIONS = [
+  { label: '20m', value: 20 },
+  { label: '30m', value: 30 },
+  { label: '1h', value: 60 },
+  { label: '1.5h', value: 90 },
+  { label: '2h', value: 120 },
+];
 
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -290,6 +301,7 @@ function normalizeMeetingEventRow(row: MeetingEventRow): MeetingEventRow | null 
   return {
     ...row,
     starts_at: startsAt,
+    duration_minutes: Number.isFinite(row.duration_minutes) ? row.duration_minutes : DEFAULT_EVENT_DURATION_MINUTES,
   };
 }
 
@@ -359,6 +371,16 @@ function formatEventDateTime(slotTime: string, timeZone: string) {
   }).format(new Date(slotTime));
 }
 
+function getEventDurationMinutes(eventRow: MeetingEventRow) {
+  return Number.isFinite(eventRow.duration_minutes) ? eventRow.duration_minutes ?? DEFAULT_EVENT_DURATION_MINUTES : DEFAULT_EVENT_DURATION_MINUTES;
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 function getCreatorShortLabel(createdBy: string) {
   if (createdBy === 'Jaiden') return 'Jd';
   if (createdBy === 'Hansol') return 'H';
@@ -369,12 +391,13 @@ function getCreatorShortLabel(createdBy: string) {
 function formatEventBadge(events: MeetingEventRow[]) {
   const creators = Array.from(new Set(events.map((eventRow) => eventRow.created_by).filter(Boolean)));
   const firstCreator = creators[0];
+  const firstEvent = events[0];
 
   if (!firstCreator) return String(events.length);
   if (creators.length > 1) return `${getCreatorShortLabel(firstCreator)}+${creators.length - 1}`;
   if (events.length > 1) return `${getCreatorShortLabel(firstCreator)}+${events.length - 1}`;
 
-  return getCreatorShortLabel(firstCreator);
+  return `${getCreatorShortLabel(firstCreator)} ${formatDuration(getEventDurationMinutes(firstEvent))}`;
 }
 
 export default function App() {
@@ -476,16 +499,23 @@ export default function App() {
     const map = new Map<string, MeetingEventRow[]>();
 
     for (const eventRow of eventRows) {
-      const slotTime = normalizeSlotTime(eventRow.starts_at);
-      if (!slotTime) continue;
+      const eventStart = new Date(eventRow.starts_at).getTime();
+      const eventEnd = eventStart + getEventDurationMinutes(eventRow) * 60 * 1000;
 
-      const eventSlotRows = map.get(slotTime) ?? [];
-      eventSlotRows.push(eventRow);
-      map.set(slotTime, eventSlotRows);
+      for (const slot of slots) {
+        const slotStart = new Date(slot.iso).getTime();
+        const slotEnd = slotStart + MINUTES_PER_SLOT * 60 * 1000;
+
+        if (slotStart < eventEnd && slotEnd > eventStart) {
+          const eventSlotRows = map.get(slot.iso) ?? [];
+          eventSlotRows.push(eventRow);
+          map.set(slot.iso, eventSlotRows);
+        }
+      }
     }
 
     return map;
-  }, [eventRows]);
+  }, [eventRows, slots]);
 
   const nextEvent = useMemo(() => {
     const now = Date.now();
@@ -783,14 +813,17 @@ export default function App() {
     dragState.current = null;
   }, [draftAvailableSlots, redoDraftStack, remoteSelectedAvailableSlots, slots]);
 
-  const openEventEditor = useCallback((slot: Slot) => {
+  const openEventEditor = useCallback((slot: Slot, eventRow?: MeetingEventRow) => {
     setEventEditor({
+      id: eventRow?.id,
       slot,
-      title: 'Zoom meeting',
-      note: '',
+      title: eventRow?.title ?? 'Zoom meeting',
+      note: eventRow?.note ?? '',
+      durationMinutes: getEventDurationMinutes(eventRow ?? { title: '', starts_at: slot.iso, created_by: selectedUser ?? '' }),
+      createdBy: eventRow?.created_by,
     });
     setEventSaveState('idle');
-  }, []);
+  }, [selectedUser]);
 
   const cancelPendingTouch = useCallback(() => {
     const pending = pendingTouch.current;
@@ -814,20 +847,26 @@ export default function App() {
       title,
       note: note || null,
       starts_at: eventEditor.slot.iso,
-      created_by: selectedUser,
+      duration_minutes: eventEditor.durationMinutes,
+      created_by: eventEditor.createdBy ?? selectedUser,
     };
 
     setEventSaveState('saving');
     setEventErrorMessage('');
 
     if (supabase) {
-      const { data, error } = await supabase.from('schedule_events').insert(rowToSave).select('*').single();
+      const request = eventEditor.id
+        ? supabase.from('schedule_events').update(rowToSave).eq('id', eventEditor.id).select('*').single()
+        : supabase.from('schedule_events').insert(rowToSave).select('*').single();
+      const { data, error } = await request;
 
       if (error) {
         setEventSaveState('error');
         setEventErrorMessage(
           error.message.includes('schedule_events')
             ? 'Meeting notes need the updated Supabase schema.'
+            : error.message.includes('duration_minutes')
+              ? 'Meeting duration needs the updated Supabase schema.'
             : error.message,
         );
         return;
@@ -835,15 +874,18 @@ export default function App() {
 
       const savedRow = normalizeMeetingEventRow(data as MeetingEventRow);
       if (savedRow) {
-        setEventRows((current) => sortEventRows([...current, savedRow]));
+        setEventRows((current) => {
+          const withoutSavedRow = current.filter((row) => row.id !== savedRow.id);
+          return sortEventRows([...withoutSavedRow, savedRow]);
+        });
       }
     } else {
       setEventRows((current) =>
         sortEventRows([
-          ...current,
+          ...current.filter((row) => row.id !== eventEditor.id),
           {
             ...rowToSave,
-            id: crypto.randomUUID(),
+            id: eventEditor.id ?? crypto.randomUUID(),
           },
         ]),
       );
@@ -852,6 +894,27 @@ export default function App() {
     setEventEditor(null);
     setEventSaveState('idle');
   }, [eventEditor, selectedUser]);
+
+  const deleteEvent = useCallback(async () => {
+    if (!eventEditor?.id) return;
+
+    setEventSaveState('saving');
+    setEventErrorMessage('');
+
+    if (supabase) {
+      const { error } = await supabase.from('schedule_events').delete().eq('id', eventEditor.id);
+
+      if (error) {
+        setEventSaveState('error');
+        setEventErrorMessage(error.message);
+        return;
+      }
+    }
+
+    setEventRows((current) => current.filter((row) => row.id !== eventEditor.id));
+    setEventEditor(null);
+    setEventSaveState('idle');
+  }, [eventEditor]);
 
   const saveDraft = useCallback(async () => {
     if (!selectedUser || (dirtySlotTimes.size === 0 && extraClearSlots.length === 0)) return;
@@ -1007,8 +1070,17 @@ export default function App() {
     };
   }, [applyDragToSlot, beginAvailabilityDrag, slotByGridKey]);
 
-  const handleSlotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot) => {
+  const handleSlotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot, slotEvents: MeetingEventRow[]) => {
     if (!selectedUser) return;
+
+    if ((event.target as HTMLElement).closest('.event-badge')) {
+      event.preventDefault();
+      event.stopPropagation();
+      dragState.current = null;
+      cancelPendingTouch();
+      openEventEditor(slot, slotEvents[0]);
+      return;
+    }
 
     if (event.pointerType === 'touch') {
       if (isTouchPaintMode) {
@@ -1021,7 +1093,7 @@ export default function App() {
       const timerId = window.setTimeout(() => {
         pendingTouch.current = null;
         dragState.current = null;
-        openEventEditor(slot);
+        openEventEditor(slot, slotEvents[0]);
       }, TOUCH_EVENT_DELAY_MS);
 
       pendingTouch.current = {
@@ -1049,13 +1121,13 @@ export default function App() {
     dragState.current = null;
   };
 
-  const handleSlotContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, slot: Slot) => {
+  const handleSlotContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, slot: Slot, slotEvents: MeetingEventRow[]) => {
     event.preventDefault();
 
     cancelPendingTouch();
 
     dragState.current = null;
-    openEventEditor(slot);
+    openEventEditor(slot, slotEvents[0]);
   };
 
   const handleSlotPointerEnter = (slot: Slot) => {
@@ -1318,15 +1390,17 @@ export default function App() {
                           const mineClass = isMine ? 'mine' : '';
                           const emptyClass = availableUsers.length === 0 ? 'empty' : '';
                           const eventClass = slotEvents.length > 0 ? 'has-event' : '';
+                          const startsEvent = slotEvents.some((eventRow) => normalizeSlotTime(eventRow.starts_at) === slot.iso);
+                          const eventStartClass = slotEvents.length === 0 ? '' : startsEvent ? 'event-start' : 'event-continuation';
 
                           return (
                             <button
                               aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available, ${slotEvents.length} events`}
-                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${eventClass}`}
+                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${eventClass} ${eventStartClass}`}
                               data-slot-key={slot.key}
                               key={slot.key}
-                              onContextMenu={(event) => handleSlotContextMenu(event, slot)}
-                              onPointerDown={(event) => handleSlotPointerDown(event, slot)}
+                              onContextMenu={(event) => handleSlotContextMenu(event, slot, slotEvents)}
+                              onPointerDown={(event) => handleSlotPointerDown(event, slot, slotEvents)}
                               onPointerEnter={() => handleSlotPointerEnter(slot)}
                               onPointerUp={(event) => handleSlotPointerUp(event, slot)}
                               type="button"
@@ -1348,7 +1422,8 @@ export default function App() {
                                       <span className="event-tooltip-item" key={eventRow.id ?? `${eventRow.starts_at}-${eventRow.title}`}>
                                         <strong>{eventRow.title}</strong>
                                         <span>
-                                          {formatEventDateTime(eventRow.starts_at, selectedPerson.timezone)} · by {eventRow.created_by}
+                                          {formatEventDateTime(eventRow.starts_at, selectedPerson.timezone)} · {formatDuration(getEventDurationMinutes(eventRow))} · by{' '}
+                                          {eventRow.created_by}
                                         </span>
                                         {eventRow.note && <em>{eventRow.note}</em>}
                                       </span>
@@ -1377,8 +1452,9 @@ export default function App() {
                 }}
               >
                 <div>
-                  <span className="context-label">Meeting note</span>
+                  <span className="context-label">{eventEditor.id ? 'Edit meeting' : 'Meeting note'}</span>
                   <strong>{formatEventDateTime(eventEditor.slot.iso, selectedPerson.timezone)}</strong>
+                  {eventEditor.createdBy && <span>Created by {eventEditor.createdBy}</span>}
                 </div>
                 <label>
                   Title
@@ -1388,6 +1464,26 @@ export default function App() {
                     value={eventEditor.title}
                   />
                 </label>
+                <fieldset className="duration-picker">
+                  <legend>Duration</legend>
+                  <div>
+                    {EVENT_DURATION_OPTIONS.map((durationOption) => (
+                      <button
+                        aria-pressed={eventEditor.durationMinutes === durationOption.value}
+                        className="duration-option"
+                        key={durationOption.value}
+                        onClick={() =>
+                          setEventEditor((current) =>
+                            current ? { ...current, durationMinutes: durationOption.value } : current,
+                          )
+                        }
+                        type="button"
+                      >
+                        {durationOption.label}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
                 <label>
                   Memo
                   <textarea
@@ -1397,11 +1493,16 @@ export default function App() {
                   />
                 </label>
                 <div className="event-dialog-actions">
+                  {eventEditor.id && (
+                    <button className="danger-action" disabled={eventSaveState === 'saving'} onClick={() => void deleteEvent()} type="button">
+                      Delete
+                    </button>
+                  )}
                   <button className="secondary-action" onClick={closeEventEditor} type="button">
                     Cancel
                   </button>
                   <button className="primary-action" disabled={eventSaveState === 'saving'} type="submit">
-                    {eventSaveState === 'saving' ? 'Saving...' : 'Add'}
+                    {eventSaveState === 'saving' ? 'Saving...' : eventEditor.id ? 'Save' : 'Add'}
                   </button>
                 </div>
               </form>

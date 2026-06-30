@@ -15,6 +15,7 @@ export type MeetingEventRow = {
   title: string;
   note?: string | null;
   starts_at: string;
+  duration_minutes?: number;
   created_by: string;
   created_at?: string;
   updated_at?: string;
