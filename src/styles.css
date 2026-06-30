@@ -474,29 +474,48 @@ h1 {
 }
 
 .upcoming-event {
-  align-items: center;
+  align-items: stretch;
   background: #ffffff;
   border: 1px solid #ded8cf;
   border-left: 4px solid var(--viewer-color);
   border-radius: 8px;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
   margin: 0 auto 14px;
   max-width: 1480px;
   padding: 12px 14px;
 }
 
-.upcoming-event > div {
+.upcoming-event-main {
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
 }
 
-.upcoming-event p {
+.upcoming-event-note {
   color: #6c645b;
   margin: 0;
+}
+
+.event-note-toggle {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-radius: 999px;
+  color: #6c645b;
+  cursor: pointer;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  padding: 0;
+  width: 26px;
+}
+
+.event-note-toggle[aria-expanded="true"] {
+  background: #f2eee8;
+  color: #272b2f;
 }
 
 .event-time-link {

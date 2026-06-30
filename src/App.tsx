@@ -592,6 +592,7 @@ export default function App() {
   const [eventSaveState, setEventSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [guideTopic, setGuideTopic] = useState<GuideTopic>('overview');
+  const [isNextEventNoteOpen, setIsNextEventNoteOpen] = useState(false);
   const [isCompactGuide, setIsCompactGuide] = useState(() => window.matchMedia('(max-width: 860px)').matches);
   const [isTouchPaintMode, setIsTouchPaintMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -716,6 +717,7 @@ export default function App() {
     return eventRows.find((eventRow) => new Date(eventRow.starts_at).getTime() >= now) ?? null;
   }, [eventRows]);
   const nextEventUrl = useMemo(() => getFirstUrl(nextEvent?.note), [nextEvent]);
+  const nextEventNote = nextEvent?.note?.trim() ?? '';
 
   const unsavedCount = dirtySlotTimes.size + (extraClearSlots.length > 0 ? 1 : 0);
   const syncLabel =
@@ -745,6 +747,10 @@ export default function App() {
 
     return () => window.clearInterval(timerId);
   }, []);
+
+  useEffect(() => {
+    setIsNextEventNoteOpen(false);
+  }, [nextEvent?.id, nextEvent?.starts_at]);
 
   useEffect(() => {
     const urlUser = getUserNameFromUrl();
@@ -1580,7 +1586,7 @@ export default function App() {
 
           {nextEvent && (
             <section className="upcoming-event" aria-label="Upcoming event">
-              <div>
+              <div className="upcoming-event-main">
                 <span className="context-label">Next event</span>
                 <strong>{nextEvent.title}</strong>
                 {nextEventUrl ? (
@@ -1590,8 +1596,20 @@ export default function App() {
                 ) : (
                   <span>{formatEventDateTime(nextEvent.starts_at, displayTimeZone)}</span>
                 )}
+                {nextEventNote && (
+                  <button
+                    aria-expanded={isNextEventNoteOpen}
+                    aria-label={isNextEventNoteOpen ? 'Hide next event memo' : 'Show next event memo'}
+                    className="event-note-toggle"
+                    onClick={() => setIsNextEventNoteOpen((current) => !current)}
+                    title={isNextEventNoteOpen ? 'Hide memo' : 'Show memo'}
+                    type="button"
+                  >
+                    <MessageSquarePlus size={15} />
+                  </button>
+                )}
               </div>
-              {nextEvent.note && <p>{nextEvent.note}</p>}
+              {nextEventNote && isNextEventNoteOpen && <p className="upcoming-event-note">{nextEventNote}</p>}
             </section>
           )}
 
