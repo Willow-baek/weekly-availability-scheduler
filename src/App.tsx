@@ -42,6 +42,7 @@ type Slot = {
 };
 
 type DragState = {
+  userName: UserName;
   isAvailable: boolean;
   lastSlot: Slot;
   touchedSlotTimes: Set<string>;
@@ -163,10 +164,6 @@ function getUserNameFromUrl() {
   return getUserNameFromValue(new URL(window.location.href).searchParams.get('user'));
 }
 
-function getSavedUserName() {
-  return getUserNameFromValue(window.localStorage.getItem('availability-user'));
-}
-
 function updateUserUrl(userName: UserName) {
   const url = new URL(window.location.href);
 
@@ -174,6 +171,11 @@ function updateUserUrl(userName: UserName) {
 
   url.searchParams.set('user', userName);
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function canWriteForCurrentUrl(userName: UserName) {
+  const urlUser = getUserNameFromUrl();
+  return !urlUser || urlUser === userName;
 }
 
 function getZonedParts(date: Date, timeZone: string) {
@@ -559,10 +561,10 @@ function withoutUnsupportedEventColumns<T extends { duration_minutes?: number; a
 
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
-    return getUserNameFromUrl() ?? getSavedUserName();
+    return getUserNameFromUrl();
   });
   const [displayTimeZone, setDisplayTimeZone] = useState(() => {
-    const initialUser = getUserNameFromUrl() ?? getSavedUserName();
+    const initialUser = getUserNameFromUrl();
     return PEOPLE.find((person) => person.name === initialUser)?.timezone ?? PEOPLE[0].timezone;
   });
   const [isTimeZonePickerOpen, setIsTimeZonePickerOpen] = useState(false);
@@ -719,9 +721,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const urlUser = getUserNameFromUrl();
+
+    if (urlUser && urlUser !== selectedUser) {
+      const urlPerson = PEOPLE.find((person) => person.name === urlUser);
+
+      setSelectedUser(urlUser);
+      if (urlPerson) {
+        setDisplayTimeZone(urlPerson.timezone);
+      }
+      return;
+    }
+
     if (selectedUser) {
       window.localStorage.setItem('availability-user', selectedUser);
-      updateUserUrl(selectedUser);
+      if (!urlUser) {
+        updateUserUrl(selectedUser);
+      }
     }
   }, [selectedUser]);
 
@@ -921,8 +937,8 @@ export default function App() {
   }, [eventRange.end, eventRange.start]);
 
   const updateDraftSlots = useCallback(
-    (targetSlots: Slot[], isAvailable: boolean) => {
-      if (!selectedUser) return;
+    (targetSlots: Slot[], isAvailable: boolean, userName = selectedUser) => {
+      if (!selectedUser || userName !== selectedUser || !canWriteForCurrentUrl(userName)) return;
       const uniqueSlots = Array.from(new Map(targetSlots.map((slot) => [slot.iso, slot])).values());
       if (uniqueSlots.length === 0) return;
 
@@ -955,7 +971,7 @@ export default function App() {
 
   const applyQuickFill = useCallback(
     (scope: QuickFillScope) => {
-      if (!selectedUser) return;
+      if (!selectedUser || !canWriteForCurrentUrl(selectedUser)) return;
 
       const startMinutes = timeLabelToMinutes(quickFillStart);
       const endMinutes = timeLabelToMinutes(quickFillEnd);
@@ -1012,6 +1028,8 @@ export default function App() {
   );
 
   const resetDraft = useCallback(() => {
+    if (!selectedUser || !canWriteForCurrentUrl(selectedUser)) return;
+
     const clearedSlots = new Set<string>();
     const wasAlreadyEmpty = areSetsEqual(draftAvailableSlots, clearedSlots);
 
@@ -1025,7 +1043,7 @@ export default function App() {
     setDirtySlotTimes(getDirtySlotTimes(clearedSlots, remoteSelectedAvailableSlots, slots));
     setSaveState('idle');
     dragState.current = null;
-  }, [displayTimeZone, draftAvailableSlots, remoteSelectedAvailableSlots, slots, weekOffset]);
+  }, [displayTimeZone, draftAvailableSlots, remoteSelectedAvailableSlots, selectedUser, slots, weekOffset]);
 
   const undoDraft = useCallback(() => {
     const previousDraft = undoDraftStack[undoDraftStack.length - 1];
@@ -1196,7 +1214,7 @@ export default function App() {
   }, [eventEditor]);
 
   const saveDraft = useCallback(async () => {
-    if (!selectedUser || (dirtySlotTimes.size === 0 && extraClearSlots.length === 0)) return;
+    if (!selectedUser || !canWriteForCurrentUrl(selectedUser) || (dirtySlotTimes.size === 0 && extraClearSlots.length === 0)) return;
 
     const rowsBySlotTime = new Map<string, AvailabilityRow>();
 
@@ -1259,17 +1277,19 @@ export default function App() {
 
   const beginAvailabilityDrag = useCallback(
     (slot: Slot) => {
-      if (!selectedUser) return;
+      if (!selectedUser || !canWriteForCurrentUrl(selectedUser)) return;
 
+      const dragUser = selectedUser;
       const current = draftAvailableSlots.has(slot.iso);
       const next = !current;
       dragState.current = {
+        userName: dragUser,
         isAvailable: next,
         lastSlot: slot,
         touchedSlotTimes: new Set([slot.iso]),
       };
 
-      updateDraftSlots([slot], next);
+      updateDraftSlots([slot], next, dragUser);
     },
     [draftAvailableSlots, selectedUser, updateDraftSlots],
   );
@@ -1300,6 +1320,10 @@ export default function App() {
     (slot: Slot) => {
       const state = dragState.current;
       if (!state) return;
+      if (state.userName !== selectedUser) {
+        dragState.current = null;
+        return;
+      }
 
       const rangeSlots = getSlotsBetween(state.lastSlot, slot).filter((rangeSlot) => !state.touchedSlotTimes.has(rangeSlot.iso));
       if (rangeSlots.length === 0) return;
@@ -1309,9 +1333,9 @@ export default function App() {
       }
 
       state.lastSlot = slot;
-      updateDraftSlots(rangeSlots, state.isAvailable);
+      updateDraftSlots(rangeSlots, state.isAvailable, state.userName);
     },
-    [getSlotsBetween, updateDraftSlots],
+    [getSlotsBetween, selectedUser, updateDraftSlots],
   );
 
   useEffect(() => {
