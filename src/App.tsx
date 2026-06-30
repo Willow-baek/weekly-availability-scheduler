@@ -449,6 +449,24 @@ function getDirtySlotTimes(draftSlots: Set<string>, remoteSlots: Set<string>, sl
   return dirtySlots;
 }
 
+function getDirtySlotTimesWithExternalDrafts(
+  draftSlots: Set<string>,
+  remoteSlots: Set<string>,
+  visibleSlots: Slot[],
+  allSlots: Slot[],
+) {
+  const dirtySlots = getDirtySlotTimes(draftSlots, remoteSlots, visibleSlots);
+  const visibleSlotTimes = new Set(visibleSlots.map((slot) => slot.iso));
+
+  for (const slot of allSlots) {
+    if (!visibleSlotTimes.has(slot.iso) && draftSlots.has(slot.iso)) {
+      dirtySlots.add(slot.iso);
+    }
+  }
+
+  return dirtySlots;
+}
+
 function areSetsEqual<T>(first: Set<T>, second: Set<T>) {
   if (first.size !== second.size) return false;
 
@@ -959,7 +977,7 @@ export default function App() {
         setExtraClearSlots([]);
         setDirtySlotTimes((currentDirtySlots) => {
           const nextDirtySlots = new Set([
-            ...getDirtySlotTimes(next, remoteSelectedAvailableSlots, slots),
+            ...getDirtySlotTimesWithExternalDrafts(next, remoteSelectedAvailableSlots, slots, allWeekSlots),
             ...currentDirtySlots,
           ]);
 
@@ -1635,7 +1653,10 @@ export default function App() {
           </section>
 
           <section className="quick-fill-panel" aria-label="Quick fill availability">
-            <span className="context-label">Quick fill</span>
+            <div className="quick-fill-meta">
+              <span className="context-label">Quick fill</span>
+              <small>Draft only. Save to publish.</small>
+            </div>
             <label>
               <span>From</span>
               <select
@@ -1693,7 +1714,6 @@ export default function App() {
                 All weeks
               </button>
             </div>
-            <small>Applies to your draft. Press Save to publish.</small>
           </section>
 
           <section className="scheduler-nav" aria-label="Week navigation">
@@ -1870,7 +1890,7 @@ export default function App() {
                       </div>
                       <div>
                         <strong>Repeat a regular time</strong>
-                        <p>Use Quick fill for regular availability like 07:00-10:00. Choose This week or All weeks, then press Save.</p>
+                        <p>Use Quick fill for regular availability like 07:00-10:00. You can still remove a few slots by hand before pressing Save.</p>
                       </div>
                     </article>
                     <article className="guide-card">
