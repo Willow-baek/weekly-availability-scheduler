@@ -1152,7 +1152,7 @@ export default function App() {
       starts_at: startsAtIso,
       duration_minutes: eventEditor.durationMinutes,
       attendees: eventEditor.attendees,
-      created_by: eventEditor.createdBy ?? selectedUser,
+      created_by: selectedUser,
     };
     const repeatCount = eventEditor.id || !eventEditor.repeatWeekly ? 1 : eventEditor.repeatCount;
     const rowsToCreate = Array.from({ length: repeatCount }, (_, index) => ({
