@@ -220,6 +220,13 @@ h1 {
   transform: translateY(-1px);
 }
 
+.person-button:disabled,
+.person-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
 .person-button span {
   font-weight: 800;
 }

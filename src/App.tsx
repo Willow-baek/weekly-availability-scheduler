@@ -1044,6 +1044,14 @@ export default function App() {
     setWeekOffset((current) => Math.min(TOTAL_WEEKS - 1, current + 1));
   };
 
+  const selectUser = (userName: UserName) => {
+    if (selectedUser && selectedUser !== userName && (unsavedCount > 0 || saveState === 'saving')) {
+      return;
+    }
+
+    setSelectedUser(userName);
+  };
+
   return (
     <main className="app-shell">
       {!selectedUser && (
@@ -1059,7 +1067,7 @@ export default function App() {
                 <button
                   className={`person-button ${person.color}`}
                   key={person.name}
-                  onClick={() => setSelectedUser(person.name)}
+                  onClick={() => selectUser(person.name)}
                   type="button"
                 >
                   <span>{person.name}</span>
@@ -1203,8 +1211,10 @@ export default function App() {
                 <button
                   aria-pressed={selectedUser === person.name}
                   className={`person-chip ${person.color}`}
+                  disabled={selectedUser !== person.name && (unsavedCount > 0 || saveState === 'saving')}
                   key={person.name}
-                  onClick={() => setSelectedUser(person.name)}
+                  onClick={() => selectUser(person.name)}
+                  title={selectedUser !== person.name && unsavedCount > 0 ? 'Save or undo changes before switching users' : person.name}
                   type="button"
                 >
                   {selectedUser === person.name && <Check size={14} />}
