@@ -7,6 +7,7 @@ import {
   Clock,
   CloudOff,
   MessageSquarePlus,
+  Paintbrush,
   Redo2,
   RefreshCw,
   RotateCcw,
@@ -86,6 +87,8 @@ const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
 const TOTAL_WEEKS = 16;
 const HOURS_PER_DAY = 24;
+const TOUCH_MOVE_CANCEL_DISTANCE = 12;
+const TOUCH_EVENT_DELAY_MS = 780;
 
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -356,6 +359,24 @@ function formatEventDateTime(slotTime: string, timeZone: string) {
   }).format(new Date(slotTime));
 }
 
+function getCreatorShortLabel(createdBy: string) {
+  if (createdBy === 'Jaiden') return 'Jd';
+  if (createdBy === 'Hansol') return 'H';
+  if (createdBy === 'Jieun') return 'Ji';
+  return createdBy.slice(0, 2) || 'M';
+}
+
+function formatEventBadge(events: MeetingEventRow[]) {
+  const creators = Array.from(new Set(events.map((eventRow) => eventRow.created_by).filter(Boolean)));
+  const firstCreator = creators[0];
+
+  if (!firstCreator) return String(events.length);
+  if (creators.length > 1) return `${getCreatorShortLabel(firstCreator)}+${creators.length - 1}`;
+  if (events.length > 1) return `${getCreatorShortLabel(firstCreator)}+${events.length - 1}`;
+
+  return getCreatorShortLabel(firstCreator);
+}
+
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
     const saved = window.localStorage.getItem('availability-user');
@@ -377,6 +398,7 @@ export default function App() {
   const [eventErrorMessage, setEventErrorMessage] = useState('');
   const [eventEditor, setEventEditor] = useState<EventEditorState | null>(null);
   const [eventSaveState, setEventSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [isTouchPaintMode, setIsTouchPaintMode] = useState(false);
   const dragState = useRef<DragState | null>(null);
   const draftScope = useRef('');
   const pendingTouch = useRef<PendingTouchState | null>(null);
@@ -509,6 +531,11 @@ export default function App() {
 
   useEffect(() => {
     const stopDragging = () => {
+      const pending = pendingTouch.current;
+      if (pending) {
+        window.clearTimeout(pending.timerId);
+        pendingTouch.current = null;
+      }
       dragState.current = null;
     };
 
@@ -765,6 +792,14 @@ export default function App() {
     setEventSaveState('idle');
   }, []);
 
+  const cancelPendingTouch = useCallback(() => {
+    const pending = pendingTouch.current;
+    if (!pending) return;
+
+    window.clearTimeout(pending.timerId);
+    pendingTouch.current = null;
+  }, []);
+
   const closeEventEditor = useCallback(() => {
     setEventEditor(null);
     setEventSaveState('idle');
@@ -940,28 +975,25 @@ export default function App() {
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
       const pending = pendingTouch.current;
+
+      if (pending && pending.pointerId === event.pointerId) {
+        const moved = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY) > TOUCH_MOVE_CANCEL_DISTANCE;
+
+        if (moved) {
+          window.clearTimeout(pending.timerId);
+          pendingTouch.current = null;
+          dragState.current = null;
+        }
+
+        return;
+      }
+
       if (!dragState.current) return;
 
       const element = document.elementFromPoint(event.clientX, event.clientY);
       const slotElement = element?.closest<HTMLElement>('[data-slot-key]');
       const slotKey = slotElement?.dataset.slotKey;
       const slot = slotKey ? slotByGridKey.get(slotKey) : null;
-
-      if (pending && pending.pointerId === event.pointerId) {
-        const moved = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY) > 8;
-
-        if (moved) {
-          window.clearTimeout(pending.timerId);
-          pendingTouch.current = null;
-          beginAvailabilityDrag(pending.slot);
-
-          if (slot) {
-            applyDragToSlot(slot);
-          }
-        }
-
-        return;
-      }
 
       if (slot) {
         applyDragToSlot(slot);
@@ -978,15 +1010,19 @@ export default function App() {
   const handleSlotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot) => {
     if (!selectedUser) return;
 
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-
     if (event.pointerType === 'touch') {
+      if (isTouchPaintMode) {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        beginAvailabilityDrag(slot);
+        return;
+      }
+
       const timerId = window.setTimeout(() => {
         pendingTouch.current = null;
         dragState.current = null;
         openEventEditor(slot);
-      }, 650);
+      }, TOUCH_EVENT_DELAY_MS);
 
       pendingTouch.current = {
         pointerId: event.pointerId,
@@ -995,14 +1031,11 @@ export default function App() {
         startY: event.clientY,
         timerId,
       };
-      dragState.current = {
-        isAvailable: draftAvailableSlots.has(slot.iso),
-        lastSlot: slot,
-        touchedSlotTimes: new Set(),
-      };
       return;
     }
 
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
     beginAvailabilityDrag(slot);
   };
 
@@ -1011,8 +1044,7 @@ export default function App() {
 
     if (!pending || pending.pointerId !== event.pointerId) return;
 
-    window.clearTimeout(pending.timerId);
-    pendingTouch.current = null;
+    cancelPendingTouch();
     beginAvailabilityDrag(slot);
     dragState.current = null;
   };
@@ -1020,11 +1052,7 @@ export default function App() {
   const handleSlotContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, slot: Slot) => {
     event.preventDefault();
 
-    const pending = pendingTouch.current;
-    if (pending) {
-      window.clearTimeout(pending.timerId);
-      pendingTouch.current = null;
-    }
+    cancelPendingTouch();
 
     dragState.current = null;
     openEventEditor(slot);
@@ -1149,6 +1177,7 @@ export default function App() {
                 <span className="context-label">Next meeting</span>
                 <strong>{nextEvent.title}</strong>
                 <span>{formatEventDateTime(nextEvent.starts_at, selectedPerson.timezone)}</span>
+                <span>by {nextEvent.created_by}</span>
               </div>
               {nextEvent.note && <p>{nextEvent.note}</p>}
             </section>
@@ -1204,6 +1233,17 @@ export default function App() {
               >
                 <Redo2 size={15} />
               </button>
+              <button
+                aria-label={isTouchPaintMode ? 'Turn off touch paint mode' : 'Turn on touch paint mode'}
+                aria-pressed={isTouchPaintMode}
+                className="secondary-action icon-action touch-paint-action"
+                disabled={saveState === 'saving'}
+                onClick={() => setIsTouchPaintMode((current) => !current)}
+                title={isTouchPaintMode ? 'Touch paint mode on' : 'Touch paint mode off'}
+                type="button"
+              >
+                <Paintbrush size={15} />
+              </button>
             </div>
 
             <div className="person-picker compact" aria-label="Current user">
@@ -1246,7 +1286,7 @@ export default function App() {
             </div>
           </section>
 
-          <section className="scheduler" aria-label="Weekly availability grid">
+          <section className={`scheduler ${isTouchPaintMode ? 'paint-mode' : ''}`} aria-label="Weekly availability grid">
             <div className="grid-head time-head">Time</div>
             {dayDates.map((day) => (
               <div className="grid-head day-head" key={day.label}>
@@ -1299,14 +1339,16 @@ export default function App() {
                               ))}
                               {slotEvents.length > 0 && (
                                 <>
-                                  <span aria-hidden="true" className="event-pin">
-                                    {slotEvents.length}
+                                  <span aria-hidden="true" className="event-badge">
+                                    {formatEventBadge(slotEvents)}
                                   </span>
                                   <span className="event-tooltip" role="tooltip">
                                     {slotEvents.map((eventRow) => (
                                       <span className="event-tooltip-item" key={eventRow.id ?? `${eventRow.starts_at}-${eventRow.title}`}>
                                         <strong>{eventRow.title}</strong>
-                                        <span>{formatEventDateTime(eventRow.starts_at, selectedPerson.timezone)}</span>
+                                        <span>
+                                          {formatEventDateTime(eventRow.starts_at, selectedPerson.timezone)} · by {eventRow.created_by}
+                                        </span>
                                         {eventRow.note && <em>{eventRow.note}</em>}
                                       </span>
                                     ))}

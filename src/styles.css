@@ -2,6 +2,11 @@
   --jaiden-color: #008080;
   --hansol-color: #f6edbd;
   --jieun-color: #ca562c;
+  --jaiden-slot: #9bd8d8;
+  --hansol-slot: #fbf1bd;
+  --jieun-slot: #eda77f;
+  --event-color: #e11d48;
+  --event-glow: rgba(225, 29, 72, 0.18);
   color: #202325;
   background: #f6f3ee;
   font-family:
@@ -454,6 +459,16 @@ h1 {
   width: 32px;
 }
 
+.touch-paint-action {
+  display: none;
+}
+
+.touch-paint-action[aria-pressed="true"] {
+  background: #202325;
+  border-color: #202325;
+  color: #ffffff;
+}
+
 .primary-action:disabled,
 .secondary-action:disabled {
   cursor: not-allowed;
@@ -553,10 +568,15 @@ h1 {
   padding: 0;
   position: relative;
   background: #ffffff;
+  touch-action: manipulation;
   transition:
     background 120ms ease,
     box-shadow 120ms ease,
     filter 120ms ease;
+}
+
+.scheduler.paint-mode .slot-cell {
+  touch-action: none;
 }
 
 .slot-segment {
@@ -571,15 +591,15 @@ h1 {
 }
 
 .slot-segment.blue.active {
-  background: var(--jaiden-color);
+  background: var(--jaiden-slot);
 }
 
 .slot-segment.green.active {
-  background: var(--hansol-color);
+  background: var(--hansol-slot);
 }
 
 .slot-segment.orange.active {
-  background: var(--jieun-color);
+  background: var(--jieun-slot);
 }
 
 .half-slot + .half-slot {
@@ -602,23 +622,42 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(32, 35, 37, 0.45);
 }
 
-.event-pin {
+.slot-cell.has-event {
+  box-shadow:
+    inset 0 0 0 2px var(--event-color),
+    inset 0 0 0 999px var(--event-glow);
+}
+
+.slot-cell.has-event:hover,
+.slot-cell.has-event:focus-visible {
+  box-shadow:
+    inset 0 0 0 2px #be123c,
+    inset 0 0 0 999px rgba(225, 29, 72, 0.24);
+}
+
+.event-badge {
   align-items: center;
-  background: #272b2f;
-  border-radius: 999px;
+  background: var(--event-color);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(225, 29, 72, 0.28);
   color: #ffffff;
   display: inline-flex;
   font-size: 0.55rem;
   font-weight: 800;
-  height: 13px;
+  height: 15px;
   justify-content: center;
   line-height: 1;
-  min-width: 13px;
-  padding: 0 3px;
+  max-width: calc(100% - 4px);
+  min-width: 15px;
+  overflow: hidden;
+  padding: 0 4px;
   pointer-events: none;
   position: absolute;
   right: 2px;
-  top: 2px;
+  text-overflow: ellipsis;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
   z-index: 2;
 }
 
@@ -778,6 +817,10 @@ h1 {
     min-height: 31px;
     padding: 0;
     width: 31px;
+  }
+
+  .touch-paint-action {
+    display: inline-flex;
   }
 
   .person-picker.compact {
