@@ -2,7 +2,6 @@
   "name": "Team IGP Scheduler",
   "short_name": "Team IGP",
   "description": "Shared weekly availability and event scheduler for Team IGP.",
-  "start_url": ".",
   "display": "standalone",
   "background_color": "#f6f3ee",
   "theme_color": "#008080",

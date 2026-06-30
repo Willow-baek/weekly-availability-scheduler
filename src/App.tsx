@@ -122,6 +122,30 @@ const EVENT_DURATION_OPTIONS = [
 const EVENT_REPEAT_COUNT_OPTIONS = [2, 3, 4, 6, 8, 12];
 const ALL_USER_NAMES = PEOPLE.map((person) => person.name);
 
+function getUserNameFromValue(value: string | null) {
+  if (!value) return null;
+
+  const normalizedValue = value.trim().toLowerCase();
+  return PEOPLE.find((person) => person.name.toLowerCase() === normalizedValue)?.name ?? null;
+}
+
+function getUserNameFromUrl() {
+  return getUserNameFromValue(new URL(window.location.href).searchParams.get('user'));
+}
+
+function getSavedUserName() {
+  return getUserNameFromValue(window.localStorage.getItem('availability-user'));
+}
+
+function updateUserUrl(userName: UserName) {
+  const url = new URL(window.location.href);
+
+  if (url.searchParams.get('user') === userName) return;
+
+  url.searchParams.set('user', userName);
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -487,12 +511,11 @@ function withoutUnsupportedEventColumns<T extends { duration_minutes?: number; a
 
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
-    const saved = window.localStorage.getItem('availability-user');
-    return PEOPLE.some((person) => person.name === saved) ? (saved as UserName) : null;
+    return getUserNameFromUrl() ?? getSavedUserName();
   });
   const [displayTimeZone, setDisplayTimeZone] = useState(() => {
-    const saved = window.localStorage.getItem('availability-user');
-    return PEOPLE.find((person) => person.name === saved)?.timezone ?? PEOPLE[0].timezone;
+    const initialUser = getUserNameFromUrl() ?? getSavedUserName();
+    return PEOPLE.find((person) => person.name === initialUser)?.timezone ?? PEOPLE[0].timezone;
   });
   const [isTimeZonePickerOpen, setIsTimeZonePickerOpen] = useState(false);
   const [rows, setRows] = useState<AvailabilityRow[]>([]);
@@ -639,6 +662,7 @@ export default function App() {
   useEffect(() => {
     if (selectedUser) {
       window.localStorage.setItem('availability-user', selectedUser);
+      updateUserUrl(selectedUser);
     }
   }, [selectedUser]);
 
@@ -1296,6 +1320,7 @@ export default function App() {
 
     const person = PEOPLE.find((item) => item.name === userName);
     setSelectedUser(userName);
+    updateUserUrl(userName);
     if (person) {
       setDisplayTimeZone(person.timezone);
     }
