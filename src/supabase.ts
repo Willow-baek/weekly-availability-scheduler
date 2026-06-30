@@ -10,6 +10,16 @@ export type AvailabilityRow = {
   updated_at?: string;
 };
 
+export type MeetingEventRow = {
+  id?: string;
+  title: string;
+  note?: string | null;
+  starts_at: string;
+  created_by: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 

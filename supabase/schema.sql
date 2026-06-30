@@ -55,3 +55,56 @@ exception
   when duplicate_object then null;
 end;
 $$;
+
+create table if not exists public.schedule_events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null default 'Zoom meeting',
+  note text,
+  starts_at timestamptz not null,
+  created_by text not null check (created_by in ('Jaiden', 'Hansol', 'Jieun')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists schedule_events_starts_at_idx
+  on public.schedule_events (starts_at);
+
+drop trigger if exists schedule_events_set_updated_at on public.schedule_events;
+create trigger schedule_events_set_updated_at
+before update on public.schedule_events
+for each row execute function public.set_updated_at();
+
+alter table public.schedule_events enable row level security;
+
+drop policy if exists "Schedule events are readable by anyone" on public.schedule_events;
+create policy "Schedule events are readable by anyone"
+on public.schedule_events for select
+to anon
+using (true);
+
+drop policy if exists "Schedule events are insertable by anyone" on public.schedule_events;
+create policy "Schedule events are insertable by anyone"
+on public.schedule_events for insert
+to anon
+with check (true);
+
+drop policy if exists "Schedule events are updateable by anyone" on public.schedule_events;
+create policy "Schedule events are updateable by anyone"
+on public.schedule_events for update
+to anon
+using (true)
+with check (true);
+
+drop policy if exists "Schedule events are deleteable by anyone" on public.schedule_events;
+create policy "Schedule events are deleteable by anyone"
+on public.schedule_events for delete
+to anon
+using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.schedule_events;
+exception
+  when duplicate_object then null;
+end;
+$$;

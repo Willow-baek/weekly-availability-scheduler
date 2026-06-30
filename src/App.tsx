@@ -1,6 +1,20 @@
-import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, CloudOff, RefreshCw, RotateCcw, Save, Undo2, Users } from 'lucide-react';
-import { AvailabilityRow, isSupabaseConfigured, supabase } from './supabase';
+import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  CloudOff,
+  MessageSquarePlus,
+  Redo2,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Undo2,
+  Users,
+} from 'lucide-react';
+import { AvailabilityRow, MeetingEventRow, isSupabaseConfigured, supabase } from './supabase';
 
 type UserName = 'Jaiden' | 'Hansol' | 'Jieun';
 
@@ -27,6 +41,20 @@ type DragState = {
   isAvailable: boolean;
   lastSlot: Slot;
   touchedSlotTimes: Set<string>;
+};
+
+type PendingTouchState = {
+  pointerId: number;
+  slot: Slot;
+  startX: number;
+  startY: number;
+  timerId: number;
+};
+
+type EventEditorState = {
+  slot: Slot;
+  title: string;
+  note: string;
 };
 
 const PEOPLE: Person[] = [
@@ -179,6 +207,37 @@ function buildSlots(timeZone: string, weekOffset: number) {
   return { slots, dayDates };
 }
 
+function buildBufferedWeekSlots(timeZone: string, weekOffset: number) {
+  const currentWeekStart = getViewerWeekStart(timeZone);
+  const start = addLocalDays(currentWeekStart.year, currentWeekStart.month, currentWeekStart.day, weekOffset * 7);
+  const slots: Slot[] = [];
+
+  for (let dayOffset = -1; dayOffset <= 7; dayOffset += 1) {
+    const date = addLocalDays(start.year, start.month, start.day, dayOffset);
+    const dayOfWeek = ((dayOffset + 7) % 7) + 1;
+
+    for (let slotIndex = 0; slotIndex < SLOT_COUNT; slotIndex += 1) {
+      const totalMinutes = slotIndex * MINUTES_PER_SLOT;
+      const hour = Math.floor(totalMinutes / 60);
+      const minute = totalMinutes % 60;
+      const utc = zonedLocalTimeToUtc(date.year, date.month, date.day, hour, minute, timeZone);
+
+      slots.push({
+        key: `buffer-${dayOffset}-${slotIndex}`,
+        iso: utc.toISOString(),
+        dayIndex: dayOffset,
+        dayOfWeek,
+        slotIndex,
+        localLabel: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+        hour,
+        minute,
+      });
+    }
+  }
+
+  return slots;
+}
+
 function makeAvailabilityKey(userName: string, slotTime: string) {
   return `${userName}::${normalizeSlotTime(slotTime) ?? slotTime}`;
 }
@@ -214,10 +273,35 @@ function normalizeAvailabilityRows(rows: AvailabilityRow[]) {
   return rows.map(normalizeAvailabilityRow).filter((row): row is AvailabilityRow => Boolean(row));
 }
 
+function normalizeMeetingEventRow(row: MeetingEventRow): MeetingEventRow | null {
+  if (!row.starts_at) {
+    return null;
+  }
+
+  const startsAt = normalizeSlotTime(row.starts_at);
+
+  if (!startsAt) {
+    return null;
+  }
+
+  return {
+    ...row,
+    starts_at: startsAt,
+  };
+}
+
+function normalizeMeetingEventRows(rows: MeetingEventRow[]) {
+  return rows.map(normalizeMeetingEventRow).filter((row): row is MeetingEventRow => Boolean(row));
+}
+
 function sortRows(rows: AvailabilityRow[]) {
   return normalizeAvailabilityRows(rows).sort(
     (a, b) => a.slot_time.localeCompare(b.slot_time) || a.user_name.localeCompare(b.user_name),
   );
+}
+
+function sortEventRows(rows: MeetingEventRow[]) {
+  return normalizeMeetingEventRows(rows).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 }
 
 function makeUserSlotSet(userName: UserName | null, slots: Slot[], availability: Map<string, AvailabilityRow>) {
@@ -246,6 +330,32 @@ function getDirtySlotTimes(draftSlots: Set<string>, remoteSlots: Set<string>, sl
   return dirtySlots;
 }
 
+function areSetsEqual<T>(first: Set<T>, second: Set<T>) {
+  if (first.size !== second.size) return false;
+
+  for (const item of first) {
+    if (!second.has(item)) return false;
+  }
+
+  return true;
+}
+
+function trimHistory<T>(items: Set<T>[]) {
+  return items.slice(-30);
+}
+
+function formatEventDateTime(slotTime: string, timeZone: string) {
+  return new Intl.DateTimeFormat('en', {
+    timeZone,
+    weekday: 'short',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(slotTime));
+}
+
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
     const saved = window.localStorage.getItem('availability-user');
@@ -259,11 +369,17 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [draftAvailableSlots, setDraftAvailableSlots] = useState<Set<string>>(() => new Set());
   const [dirtySlotTimes, setDirtySlotTimes] = useState<Set<string>>(() => new Set());
-  const [restoreDraftSlots, setRestoreDraftSlots] = useState<Set<string> | null>(null);
+  const [extraClearSlots, setExtraClearSlots] = useState<Slot[]>([]);
+  const [undoDraftStack, setUndoDraftStack] = useState<Set<string>[]>([]);
+  const [redoDraftStack, setRedoDraftStack] = useState<Set<string>[]>([]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [eventRows, setEventRows] = useState<MeetingEventRow[]>([]);
+  const [eventErrorMessage, setEventErrorMessage] = useState('');
+  const [eventEditor, setEventEditor] = useState<EventEditorState | null>(null);
+  const [eventSaveState, setEventSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const dragState = useRef<DragState | null>(null);
   const draftScope = useRef('');
-  const resetClickTimer = useRef<number | null>(null);
+  const pendingTouch = useRef<PendingTouchState | null>(null);
 
   const selectedPerson = useMemo(
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
@@ -274,6 +390,17 @@ export default function App() {
     () => buildSlots(selectedPerson?.timezone ?? PEOPLE[0].timezone, weekOffset),
     [selectedPerson?.timezone, weekOffset],
   );
+
+  const eventRange = useMemo(() => {
+    const timeZone = selectedPerson?.timezone ?? PEOPLE[0].timezone;
+    const firstWeekSlots = buildSlots(timeZone, 0).slots;
+    const finalWeekSlots = buildSlots(timeZone, TOTAL_WEEKS - 1).slots;
+
+    return {
+      start: firstWeekSlots[0]?.iso ?? new Date().toISOString(),
+      end: finalWeekSlots[finalWeekSlots.length - 1]?.iso ?? new Date().toISOString(),
+    };
+  }, [selectedPerson?.timezone]);
 
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
   const slotByGridKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
@@ -323,7 +450,28 @@ export default function App() {
     return map;
   }, [availability, draftAvailableSlots, selectedUser, slots]);
 
-  const unsavedCount = dirtySlotTimes.size;
+  const eventsBySlot = useMemo(() => {
+    const map = new Map<string, MeetingEventRow[]>();
+
+    for (const eventRow of eventRows) {
+      const slotTime = normalizeSlotTime(eventRow.starts_at);
+      if (!slotTime) continue;
+
+      const eventSlotRows = map.get(slotTime) ?? [];
+      eventSlotRows.push(eventRow);
+      map.set(slotTime, eventSlotRows);
+    }
+
+    return map;
+  }, [eventRows]);
+
+  const nextEvent = useMemo(() => {
+    const now = Date.now();
+
+    return eventRows.find((eventRow) => new Date(eventRow.starts_at).getTime() >= now) ?? null;
+  }, [eventRows]);
+
+  const unsavedCount = dirtySlotTimes.size + (extraClearSlots.length > 0 ? 1 : 0);
   const syncLabel =
     status === 'offline'
       ? 'Local demo'
@@ -349,9 +497,11 @@ export default function App() {
       draftScope.current = draftScopeKey;
       setDraftAvailableSlots(new Set(remoteSelectedAvailableSlots));
       setDirtySlotTimes(new Set());
+      setExtraClearSlots([]);
+      setUndoDraftStack([]);
+      setRedoDraftStack([]);
 
       if (scopeChanged) {
-        setRestoreDraftSlots(null);
         setSaveState('idle');
       }
     }
@@ -368,14 +518,6 @@ export default function App() {
     return () => {
       window.removeEventListener('pointerup', stopDragging);
       window.removeEventListener('pointercancel', stopDragging);
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (resetClickTimer.current) {
-        window.clearTimeout(resetClickTimer.current);
-      }
     };
   }, []);
 
@@ -410,6 +552,37 @@ export default function App() {
   useEffect(() => {
     void loadAvailability();
   }, [loadAvailability]);
+
+  const loadEvents = useCallback(async () => {
+    if (!supabase) {
+      return;
+    }
+
+    setEventErrorMessage('');
+
+    const { data, error } = await supabase
+      .from('schedule_events')
+      .select('*')
+      .gte('starts_at', eventRange.start)
+      .lte('starts_at', eventRange.end)
+      .order('starts_at', { ascending: true });
+
+    if (error) {
+      setEventRows([]);
+      setEventErrorMessage(
+        error.message.includes('schedule_events')
+          ? 'Meeting notes need the updated Supabase schema.'
+          : error.message,
+      );
+      return;
+    }
+
+    setEventRows(sortEventRows((data ?? []) as MeetingEventRow[]));
+  }, [eventRange.end, eventRange.start]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
 
   useEffect(() => {
     if (!supabase) {
@@ -461,6 +634,49 @@ export default function App() {
     };
   }, [slotSet]);
 
+  useEffect(() => {
+    if (!supabase) {
+      return undefined;
+    }
+
+    const client = supabase;
+    const channel = supabase
+      .channel('meeting-events')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'schedule_events',
+        },
+        (payload) => {
+          const nextRow = payload.new ? normalizeMeetingEventRow(payload.new as MeetingEventRow) : null;
+          const oldRow = payload.old ? normalizeMeetingEventRow(payload.old as MeetingEventRow) : null;
+          const relevantTime = nextRow?.starts_at ?? oldRow?.starts_at;
+
+          if (relevantTime && (relevantTime < eventRange.start || relevantTime > eventRange.end)) {
+            return;
+          }
+
+          setEventRows((current) => {
+            if (payload.eventType === 'DELETE' && oldRow?.id) {
+              return current.filter((row) => row.id !== oldRow.id);
+            }
+
+            if (!nextRow) return current;
+
+            const withoutRow = current.filter((row) => row.id !== nextRow.id);
+            return sortEventRows([...withoutRow, nextRow]);
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [eventRange.end, eventRange.start]);
+
   const updateDraftSlots = useCallback(
     (targetSlots: Slot[], isAvailable: boolean) => {
       if (!selectedUser) return;
@@ -478,79 +694,145 @@ export default function App() {
           }
         }
 
-        return next;
-      });
-
-      setDirtySlotTimes((current) => {
-        const next = new Set(current);
-
-        for (const slot of uniqueSlots) {
-          if (remoteSelectedAvailableSlots.has(slot.iso) === isAvailable) {
-            next.delete(slot.iso);
-          } else {
-            next.add(slot.iso);
-          }
+        if (areSetsEqual(current, next)) {
+          return current;
         }
 
+        setUndoDraftStack((history) => trimHistory([...history, new Set(current)]));
+        setRedoDraftStack([]);
+        setExtraClearSlots([]);
+        setDirtySlotTimes(getDirtySlotTimes(next, remoteSelectedAvailableSlots, slots));
+        setSaveState('idle');
+
         return next;
       });
-
-      setSaveState('idle');
     },
-    [remoteSelectedAvailableSlots, selectedUser],
+    [remoteSelectedAvailableSlots, selectedUser, slots],
   );
 
   const resetDraft = useCallback(() => {
-    setRestoreDraftSlots(new Set(draftAvailableSlots));
-    setDraftAvailableSlots(new Set(remoteSelectedAvailableSlots));
-    setDirtySlotTimes(new Set());
+    const clearedSlots = new Set<string>();
+    const wasAlreadyEmpty = areSetsEqual(draftAvailableSlots, clearedSlots);
+
+    if (!wasAlreadyEmpty) {
+      setUndoDraftStack((history) => trimHistory([...history, new Set(draftAvailableSlots)]));
+    }
+
+    setRedoDraftStack([]);
+    setDraftAvailableSlots(clearedSlots);
+    setExtraClearSlots(buildBufferedWeekSlots(selectedPerson?.timezone ?? PEOPLE[0].timezone, weekOffset));
+    setDirtySlotTimes(getDirtySlotTimes(clearedSlots, remoteSelectedAvailableSlots, slots));
     setSaveState('idle');
     dragState.current = null;
-  }, [draftAvailableSlots, remoteSelectedAvailableSlots]);
+  }, [draftAvailableSlots, remoteSelectedAvailableSlots, selectedPerson?.timezone, slots, weekOffset]);
 
-  const clearDraft = useCallback(() => {
-    setRestoreDraftSlots(new Set(draftAvailableSlots));
-    setDraftAvailableSlots(new Set());
-    setDirtySlotTimes(getDirtySlotTimes(new Set(), remoteSelectedAvailableSlots, slots));
-    setSaveState('idle');
-    dragState.current = null;
-  }, [draftAvailableSlots, remoteSelectedAvailableSlots, slots]);
+  const undoDraft = useCallback(() => {
+    const previousDraft = undoDraftStack[undoDraftStack.length - 1];
 
-  const restoreDraft = useCallback(() => {
-    if (!restoreDraftSlots) return;
+    if (!previousDraft) return;
 
-    const restoredSlots = new Set(restoreDraftSlots);
+    const restoredSlots = new Set(previousDraft);
+    setUndoDraftStack((history) => history.slice(0, -1));
+    setRedoDraftStack((history) => trimHistory([...history, new Set(draftAvailableSlots)]));
     setDraftAvailableSlots(restoredSlots);
+    setExtraClearSlots([]);
     setDirtySlotTimes(getDirtySlotTimes(restoredSlots, remoteSelectedAvailableSlots, slots));
-    setRestoreDraftSlots(null);
     setSaveState('idle');
     dragState.current = null;
-  }, [remoteSelectedAvailableSlots, restoreDraftSlots, slots]);
+  }, [draftAvailableSlots, remoteSelectedAvailableSlots, slots, undoDraftStack]);
 
-  const handleResetClick = useCallback(() => {
-    if (resetClickTimer.current) {
-      window.clearTimeout(resetClickTimer.current);
+  const redoDraft = useCallback(() => {
+    const nextDraft = redoDraftStack[redoDraftStack.length - 1];
+
+    if (!nextDraft) return;
+
+    const restoredSlots = new Set(nextDraft);
+    setRedoDraftStack((history) => history.slice(0, -1));
+    setUndoDraftStack((history) => trimHistory([...history, new Set(draftAvailableSlots)]));
+    setDraftAvailableSlots(restoredSlots);
+    setExtraClearSlots([]);
+    setDirtySlotTimes(getDirtySlotTimes(restoredSlots, remoteSelectedAvailableSlots, slots));
+    setSaveState('idle');
+    dragState.current = null;
+  }, [draftAvailableSlots, redoDraftStack, remoteSelectedAvailableSlots, slots]);
+
+  const openEventEditor = useCallback((slot: Slot) => {
+    setEventEditor({
+      slot,
+      title: 'Zoom meeting',
+      note: '',
+    });
+    setEventSaveState('idle');
+  }, []);
+
+  const closeEventEditor = useCallback(() => {
+    setEventEditor(null);
+    setEventSaveState('idle');
+  }, []);
+
+  const saveEvent = useCallback(async () => {
+    if (!eventEditor || !selectedUser) return;
+
+    const title = eventEditor.title.trim() || 'Zoom meeting';
+    const note = eventEditor.note.trim();
+    const rowToSave = {
+      title,
+      note: note || null,
+      starts_at: eventEditor.slot.iso,
+      created_by: selectedUser,
+    };
+
+    setEventSaveState('saving');
+    setEventErrorMessage('');
+
+    if (supabase) {
+      const { data, error } = await supabase.from('schedule_events').insert(rowToSave).select('*').single();
+
+      if (error) {
+        setEventSaveState('error');
+        setEventErrorMessage(
+          error.message.includes('schedule_events')
+            ? 'Meeting notes need the updated Supabase schema.'
+            : error.message,
+        );
+        return;
+      }
+
+      const savedRow = normalizeMeetingEventRow(data as MeetingEventRow);
+      if (savedRow) {
+        setEventRows((current) => sortEventRows([...current, savedRow]));
+      }
+    } else {
+      setEventRows((current) =>
+        sortEventRows([
+          ...current,
+          {
+            ...rowToSave,
+            id: crypto.randomUUID(),
+          },
+        ]),
+      );
     }
 
-    resetClickTimer.current = window.setTimeout(() => {
-      resetDraft();
-      resetClickTimer.current = null;
-    }, 220);
-  }, [resetDraft]);
-
-  const handleResetDoubleClick = useCallback(() => {
-    if (resetClickTimer.current) {
-      window.clearTimeout(resetClickTimer.current);
-      resetClickTimer.current = null;
-    }
-
-    clearDraft();
-  }, [clearDraft]);
+    setEventEditor(null);
+    setEventSaveState('idle');
+  }, [eventEditor, selectedUser]);
 
   const saveDraft = useCallback(async () => {
-    if (!selectedUser || dirtySlotTimes.size === 0) return;
+    if (!selectedUser || (dirtySlotTimes.size === 0 && extraClearSlots.length === 0)) return;
 
-    const rowsToSave = [...dirtySlotTimes]
+    const rowsBySlotTime = new Map<string, AvailabilityRow>();
+
+    for (const slot of extraClearSlots) {
+      rowsBySlotTime.set(slot.iso, {
+        user_name: selectedUser,
+        day_of_week: slot.dayOfWeek,
+        slot_time: slot.iso,
+        is_available: false,
+      });
+    }
+
+    for (const row of [...dirtySlotTimes]
       .map((slotTime) => slotByIso.get(slotTime))
       .filter((slot): slot is Slot => Boolean(slot))
       .map((slot) => ({
@@ -558,7 +840,11 @@ export default function App() {
         day_of_week: slot.dayOfWeek,
         slot_time: slot.iso,
         is_available: draftAvailableSlots.has(slot.iso),
-      }));
+      }))) {
+      rowsBySlotTime.set(row.slot_time, row);
+    }
+
+    const rowsToSave = [...rowsBySlotTime.values()];
 
     if (rowsToSave.length === 0) return;
 
@@ -588,9 +874,28 @@ export default function App() {
       return sortRows([...nextRows.values()]);
     });
     setDirtySlotTimes(new Set());
-    setRestoreDraftSlots(null);
+    setExtraClearSlots([]);
+    setUndoDraftStack([]);
+    setRedoDraftStack([]);
     setSaveState('saved');
-  }, [dirtySlotTimes, draftAvailableSlots, selectedUser, slotByIso]);
+  }, [dirtySlotTimes, draftAvailableSlots, extraClearSlots, selectedUser, slotByIso]);
+
+  const beginAvailabilityDrag = useCallback(
+    (slot: Slot) => {
+      if (!selectedUser) return;
+
+      const current = draftAvailableSlots.has(slot.iso);
+      const next = !current;
+      dragState.current = {
+        isAvailable: next,
+        lastSlot: slot,
+        touchedSlotTimes: new Set([slot.iso]),
+      };
+
+      updateDraftSlots([slot], next);
+    },
+    [draftAvailableSlots, selectedUser, updateDraftSlots],
+  );
 
   const getSlotsBetween = useCallback(
     (fromSlot: Slot, toSlot: Slot) => {
@@ -634,12 +939,29 @@ export default function App() {
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
+      const pending = pendingTouch.current;
       if (!dragState.current) return;
 
       const element = document.elementFromPoint(event.clientX, event.clientY);
       const slotElement = element?.closest<HTMLElement>('[data-slot-key]');
       const slotKey = slotElement?.dataset.slotKey;
       const slot = slotKey ? slotByGridKey.get(slotKey) : null;
+
+      if (pending && pending.pointerId === event.pointerId) {
+        const moved = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY) > 8;
+
+        if (moved) {
+          window.clearTimeout(pending.timerId);
+          pendingTouch.current = null;
+          beginAvailabilityDrag(pending.slot);
+
+          if (slot) {
+            applyDragToSlot(slot);
+          }
+        }
+
+        return;
+      }
 
       if (slot) {
         applyDragToSlot(slot);
@@ -651,22 +973,61 @@ export default function App() {
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
     };
-  }, [applyDragToSlot, slotByGridKey]);
+  }, [applyDragToSlot, beginAvailabilityDrag, slotByGridKey]);
 
   const handleSlotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot) => {
     if (!selectedUser) return;
 
     event.preventDefault();
-    const current = draftAvailableSlots.has(slot.iso);
-    const next = !current;
-    dragState.current = {
-      isAvailable: next,
-      lastSlot: slot,
-      touchedSlotTimes: new Set([slot.iso]),
-    };
-
     event.currentTarget.setPointerCapture(event.pointerId);
-    updateDraftSlots([slot], next);
+
+    if (event.pointerType === 'touch') {
+      const timerId = window.setTimeout(() => {
+        pendingTouch.current = null;
+        dragState.current = null;
+        openEventEditor(slot);
+      }, 650);
+
+      pendingTouch.current = {
+        pointerId: event.pointerId,
+        slot,
+        startX: event.clientX,
+        startY: event.clientY,
+        timerId,
+      };
+      dragState.current = {
+        isAvailable: draftAvailableSlots.has(slot.iso),
+        lastSlot: slot,
+        touchedSlotTimes: new Set(),
+      };
+      return;
+    }
+
+    beginAvailabilityDrag(slot);
+  };
+
+  const handleSlotPointerUp = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot) => {
+    const pending = pendingTouch.current;
+
+    if (!pending || pending.pointerId !== event.pointerId) return;
+
+    window.clearTimeout(pending.timerId);
+    pendingTouch.current = null;
+    beginAvailabilityDrag(slot);
+    dragState.current = null;
+  };
+
+  const handleSlotContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, slot: Slot) => {
+    event.preventDefault();
+
+    const pending = pendingTouch.current;
+    if (pending) {
+      window.clearTimeout(pending.timerId);
+      pendingTouch.current = null;
+    }
+
+    dragState.current = null;
+    openEventEditor(slot);
   };
 
   const handleSlotPointerEnter = (slot: Slot) => {
@@ -767,6 +1128,24 @@ export default function App() {
 
           {errorMessage && <div className="notice error">{errorMessage}</div>}
 
+          {eventErrorMessage && (
+            <div className="notice event-warning">
+              <MessageSquarePlus size={18} />
+              {eventErrorMessage}
+            </div>
+          )}
+
+          {nextEvent && (
+            <section className="upcoming-event" aria-label="Upcoming meeting">
+              <div>
+                <span className="context-label">Next meeting</span>
+                <strong>{nextEvent.title}</strong>
+                <span>{formatEventDateTime(nextEvent.starts_at, selectedPerson.timezone)}</span>
+              </div>
+              {nextEvent.note && <p>{nextEvent.note}</p>}
+            </section>
+          )}
+
           <section className="context-row" aria-label="Scheduler context">
             <div>
               <span className="context-label">Viewing as</span>
@@ -788,25 +1167,34 @@ export default function App() {
           <section className="controls-row" aria-label="Scheduler controls">
             <div className="control-side left">
               <button
-                aria-label="Discard unsaved changes"
+                aria-label="Clear current user's week"
                 className="secondary-action icon-action"
                 disabled={saveState === 'saving'}
-                onDoubleClick={handleResetDoubleClick}
-                onClick={handleResetClick}
-                title="Click to discard unsaved changes. Double-click to clear this week."
+                onClick={resetDraft}
+                title="Clear this user's week. Save to publish."
                 type="button"
               >
                 <RotateCcw size={15} />
               </button>
               <button
-                aria-label="Restore previous draft"
+                aria-label="Undo"
                 className="secondary-action icon-action"
-                disabled={!restoreDraftSlots || saveState === 'saving'}
-                onClick={restoreDraft}
-                title="Restore previous draft"
+                disabled={undoDraftStack.length === 0 || saveState === 'saving'}
+                onClick={undoDraft}
+                title="Undo"
                 type="button"
               >
                 <Undo2 size={15} />
+              </button>
+              <button
+                aria-label="Redo"
+                className="secondary-action icon-action"
+                disabled={redoDraftStack.length === 0 || saveState === 'saving'}
+                onClick={redoDraft}
+                title="Redo"
+                type="button"
+              >
+                <Redo2 size={15} />
               </button>
             </div>
 
@@ -835,9 +1223,15 @@ export default function App() {
                       ? `${unsavedCount} unsaved`
                       : 'No changes'}
               </span>
-              <button className="primary-action" disabled={unsavedCount === 0 || saveState === 'saving'} onClick={saveDraft} type="button">
+              <button
+                aria-label="Save changes"
+                className="primary-action icon-action"
+                disabled={unsavedCount === 0 || saveState === 'saving'}
+                onClick={saveDraft}
+                title="Save changes"
+                type="button"
+              >
                 {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
-                Save
               </button>
             </div>
           </section>
@@ -868,18 +1262,22 @@ export default function App() {
                       <div className={`hour-cell ${periodClass}`} key={`${dayIndex}-${hour}`}>
                         {halfHourSlots.map((slot) => {
                           const availableUsers = visibleSlotsByTime.get(slot.iso) ?? [];
+                          const slotEvents = eventsBySlot.get(slot.iso) ?? [];
                           const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
                           const mineClass = isMine ? 'mine' : '';
                           const emptyClass = availableUsers.length === 0 ? 'empty' : '';
+                          const eventClass = slotEvents.length > 0 ? 'has-event' : '';
 
                           return (
                             <button
-                              aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available`}
-                              className={`half-slot slot-cell ${emptyClass} ${mineClass}`}
+                              aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available, ${slotEvents.length} events`}
+                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${eventClass}`}
                               data-slot-key={slot.key}
                               key={slot.key}
+                              onContextMenu={(event) => handleSlotContextMenu(event, slot)}
                               onPointerDown={(event) => handleSlotPointerDown(event, slot)}
                               onPointerEnter={() => handleSlotPointerEnter(slot)}
+                              onPointerUp={(event) => handleSlotPointerUp(event, slot)}
                               type="button"
                             >
                               {PEOPLE.map((person) => (
@@ -889,6 +1287,22 @@ export default function App() {
                                   key={person.name}
                                 />
                               ))}
+                              {slotEvents.length > 0 && (
+                                <>
+                                  <span aria-hidden="true" className="event-pin">
+                                    {slotEvents.length}
+                                  </span>
+                                  <span className="event-tooltip" role="tooltip">
+                                    {slotEvents.map((eventRow) => (
+                                      <span className="event-tooltip-item" key={eventRow.id ?? `${eventRow.starts_at}-${eventRow.title}`}>
+                                        <strong>{eventRow.title}</strong>
+                                        <span>{formatEventDateTime(eventRow.starts_at, selectedPerson.timezone)}</span>
+                                        {eventRow.note && <em>{eventRow.note}</em>}
+                                      </span>
+                                    ))}
+                                  </span>
+                                </>
+                              )}
                             </button>
                           );
                         })}
@@ -899,6 +1313,47 @@ export default function App() {
               );
             })}
           </section>
+
+          {eventEditor && (
+            <div className="event-dialog-backdrop" role="presentation">
+              <form
+                className="event-dialog"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveEvent();
+                }}
+              >
+                <div>
+                  <span className="context-label">Meeting note</span>
+                  <strong>{formatEventDateTime(eventEditor.slot.iso, selectedPerson.timezone)}</strong>
+                </div>
+                <label>
+                  Title
+                  <input
+                    autoFocus
+                    onChange={(event) => setEventEditor((current) => (current ? { ...current, title: event.target.value } : current))}
+                    value={eventEditor.title}
+                  />
+                </label>
+                <label>
+                  Memo
+                  <textarea
+                    onChange={(event) => setEventEditor((current) => (current ? { ...current, note: event.target.value } : current))}
+                    placeholder="Zoom link, agenda, or short memo"
+                    value={eventEditor.note}
+                  />
+                </label>
+                <div className="event-dialog-actions">
+                  <button className="secondary-action" onClick={closeEventEditor} type="button">
+                    Cancel
+                  </button>
+                  <button className="primary-action" disabled={eventSaveState === 'saving'} type="submit">
+                    {eventSaveState === 'saving' ? 'Saving...' : 'Add'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </>
       )}
     </main>

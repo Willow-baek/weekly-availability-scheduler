@@ -13,7 +13,7 @@ Then enable GitHub Pages with **Source: GitHub Actions** in the repository setti
 
 ## Setup
 
-1. Create the Supabase table by running `supabase/schema.sql` in the Supabase SQL editor.
+1. Create or update the Supabase tables by running `supabase/schema.sql` in the Supabase SQL editor.
 2. Copy `.env.example` to `.env.local`.
 3. Add your Supabase project URL and anon key:
 
@@ -29,4 +29,4 @@ npm install
 npm run dev
 ```
 
-Without Supabase credentials, the app still opens in local demo mode, but availability will not sync or persist.
+Without Supabase credentials, the app still opens in local demo mode, but availability and meeting notes will not sync or persist.

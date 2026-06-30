@@ -297,6 +297,11 @@ h1 {
   color: #9a3328;
 }
 
+.notice.event-warning {
+  border-color: #e2c970;
+  color: #7a5f12;
+}
+
 .context-row {
   align-items: center;
   display: flex;
@@ -316,6 +321,32 @@ h1 {
   color: #746d65;
   font-size: 0.84rem;
   text-transform: uppercase;
+}
+
+.upcoming-event {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-left: 4px solid var(--jaiden-color);
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 0 auto 14px;
+  max-width: 1480px;
+  padding: 12px 14px;
+}
+
+.upcoming-event > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.upcoming-event p {
+  color: #6c645b;
+  margin: 0;
 }
 
 .legend {
@@ -363,7 +394,7 @@ h1 {
 .control-side {
   align-items: center;
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .control-side.left {
@@ -513,6 +544,7 @@ h1 {
   justify-content: center;
   min-height: 20px;
   padding: 0;
+  position: relative;
   background: #ffffff;
   transition:
     background 120ms ease,
@@ -563,6 +595,121 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(32, 35, 37, 0.45);
 }
 
+.event-pin {
+  align-items: center;
+  background: #272b2f;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.55rem;
+  font-weight: 800;
+  height: 13px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 13px;
+  padding: 0 3px;
+  pointer-events: none;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  z-index: 2;
+}
+
+.event-tooltip {
+  background: #272b2f;
+  border-radius: 8px;
+  bottom: calc(100% + 7px);
+  box-shadow: 0 12px 32px rgba(32, 35, 37, 0.22);
+  color: #ffffff;
+  display: none;
+  font-size: 0.76rem;
+  left: 50%;
+  line-height: 1.35;
+  min-width: 190px;
+  padding: 9px 10px;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.slot-cell.has-event:hover .event-tooltip,
+.slot-cell.has-event:focus-visible .event-tooltip {
+  display: grid;
+  gap: 8px;
+}
+
+.event-tooltip-item {
+  display: grid;
+  gap: 2px;
+}
+
+.event-tooltip-item span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.event-tooltip-item em {
+  color: rgba(255, 255, 255, 0.9);
+  font-style: normal;
+}
+
+.event-dialog-backdrop {
+  align-items: center;
+  background: rgba(32, 35, 37, 0.32);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 20;
+}
+
+.event-dialog {
+  background: #ffffff;
+  border: 1px solid #ded8cf;
+  border-radius: 8px;
+  box-shadow: 0 22px 80px rgba(32, 35, 37, 0.22);
+  display: grid;
+  gap: 14px;
+  max-width: 420px;
+  padding: 18px;
+  width: min(100%, 420px);
+}
+
+.event-dialog > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.event-dialog label {
+  color: #56514b;
+  display: grid;
+  font-size: 0.84rem;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.event-dialog input,
+.event-dialog textarea {
+  border: 1px solid #d7d0c7;
+  border-radius: 8px;
+  color: #202325;
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.event-dialog textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.event-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     padding: 14px;
@@ -570,7 +717,8 @@ h1 {
 
   .topbar,
   .context-row,
-  .controls-row {
+  .controls-row,
+  .upcoming-event {
     align-items: stretch;
     flex-direction: column;
   }
@@ -599,7 +747,7 @@ h1 {
   .controls-row {
     display: grid;
     gap: 8px;
-    grid-template-columns: 72px minmax(0, 1fr) 70px;
+    grid-template-columns: 108px minmax(0, 1fr) 62px;
     padding: 8px;
   }
 
