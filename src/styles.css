@@ -789,10 +789,10 @@ h1 {
   box-shadow: 0 22px 80px rgba(32, 35, 37, 0.22);
   display: grid;
   gap: 14px;
-  max-width: 420px;
+  max-width: 720px;
   padding: 18px;
   position: relative;
-  width: min(100%, 420px);
+  width: min(calc(100vw - 36px), 720px);
 }
 
 .event-dialog-close {
@@ -812,9 +812,14 @@ h1 {
   width: 30px;
 }
 
-.event-dialog > div:first-child {
+.event-dialog-heading {
   display: grid;
   gap: 4px;
+  padding-right: 40px;
+}
+
+.event-dialog-heading strong {
+  overflow-wrap: anywhere;
 }
 
 .event-dialog label {
@@ -823,12 +828,14 @@ h1 {
   font-size: 0.84rem;
   font-weight: 700;
   gap: 6px;
+  min-width: 0;
 }
 
 .event-time-fields {
   display: grid;
   gap: 8px;
-  grid-template-columns: 1fr 0.8fr 1.1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.25fr);
+  min-width: 0;
 }
 
 .duration-picker {
@@ -896,7 +903,18 @@ h1 {
   border-radius: 8px;
   color: #202325;
   font: inherit;
+  max-width: 100%;
+  min-width: 0;
   padding: 9px 10px;
+  width: 100%;
+}
+
+.repeat-toggle input {
+  flex: 0 0 16px;
+  height: 16px;
+  max-width: 16px;
+  min-width: 16px;
+  width: 16px;
 }
 
 .event-dialog textarea {

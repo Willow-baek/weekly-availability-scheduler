@@ -1564,7 +1564,7 @@ export default function App() {
                 <button aria-label="Close meeting editor" className="event-dialog-close" onClick={closeEventEditor} type="button">
                   <X size={16} />
                 </button>
-                <div>
+                <div className="event-dialog-heading">
                   <span className="context-label">{eventEditor.id ? 'Edit meeting' : 'Meeting note'}</span>
                   <strong>{eventEditorStartsAtIso ? formatEventDateTime(eventEditorStartsAtIso, eventEditor.timeZone) : ''}</strong>
                   {eventEditor.createdBy && <span>Created by {eventEditor.createdBy}</span>}
