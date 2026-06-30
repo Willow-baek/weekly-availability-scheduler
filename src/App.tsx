@@ -1,4 +1,4 @@
-import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -548,17 +548,8 @@ function isEventRelevantToUser(eventRow: MeetingEventRow, userName: UserName | n
   return normalizeAttendees(eventRow.attendees).includes(userName);
 }
 
-function withoutUnsupportedEventColumns<T extends { duration_minutes?: number; attendees?: UserName[] }>(
-  row: T,
-  columns: Array<'duration_minutes' | 'attendees'>,
-) {
-  const next = { ...row };
-
-  for (const column of columns) {
-    delete next[column];
-  }
-
-  return next;
+function isMissingEventDetailColumnError(message: string) {
+  return message.includes('duration_minutes') || message.includes('attendees');
 }
 
 export default function App() {
@@ -844,6 +835,22 @@ export default function App() {
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    void supabase
+      .from('schedule_events')
+      .select('duration_minutes,attendees')
+      .limit(1)
+      .then(({ error }) => {
+        if (error && isMissingEventDetailColumnError(error.message)) {
+          setEventErrorMessage('Event duration and attendees need the updated Supabase schema. Run supabase/schema.sql, then refresh.');
+        }
+      });
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -1136,28 +1143,12 @@ export default function App() {
         ? await supabase.from('schedule_events').update(rowToSave).eq('id', eventEditor.id).select('*').single()
         : await supabase.from('schedule_events').insert(rowsToCreate).select('*');
 
-      if (error && (error.message.includes('duration_minutes') || error.message.includes('attendees'))) {
-        const unsupportedColumns: Array<'duration_minutes' | 'attendees'> = ['duration_minutes', 'attendees'];
-        const fallbackRowToSave = withoutUnsupportedEventColumns(rowToSave, unsupportedColumns);
-        const fallbackRowsToCreate = rowsToCreate.map((row) => withoutUnsupportedEventColumns(row, unsupportedColumns));
-        const fallbackResult = eventEditor.id
-          ? await supabase.from('schedule_events').update(fallbackRowToSave).eq('id', eventEditor.id).select('*').single()
-          : await supabase.from('schedule_events').insert(fallbackRowsToCreate).select('*');
-
-        data = fallbackResult.data;
-        error = fallbackResult.error;
-
-        if (!error) {
-          setEventErrorMessage('Event saved. Run the updated Supabase schema to keep event durations and attendees.');
-        }
-      }
-
       if (error) {
         setEventSaveState('error');
         setEventErrorMessage(
-          error.message.includes('schedule_events')
-            ? 'Event details need the updated Supabase schema.'
-            : error.message.includes('duration_minutes') || error.message.includes('attendees')
+          isMissingEventDetailColumnError(error.message)
+              ? 'Event duration and attendees need the updated Supabase schema. Run supabase/schema.sql, then save again.'
+            : error.message.includes('schedule_events')
               ? 'Event details need the updated Supabase schema.'
             : error.message,
         );
@@ -1375,7 +1366,7 @@ export default function App() {
   const handleSlotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, slot: Slot, slotEvents: MeetingEventRow[]) => {
     if (!selectedUser) return;
 
-    if ((event.target as HTMLElement).closest('.event-badge')) {
+    if ((event.target as HTMLElement).closest('.event-block')) {
       event.preventDefault();
       event.stopPropagation();
       dragState.current = null;
@@ -1879,8 +1870,14 @@ export default function App() {
                           const eventClass = slotEvents.length > 0 ? 'has-event' : '';
                           const hasRelevantEvent = slotEvents.some((eventRow) => isEventRelevantToUser(eventRow, selectedUser));
                           const eventMutedClass = slotEvents.length > 0 && !hasRelevantEvent ? 'event-muted' : '';
-                          const startsEvent = slotEvents.some((eventRow) => normalizeSlotTime(eventRow.starts_at) === slot.iso);
+                          const startingEvents = slotEvents.filter((eventRow) => normalizeSlotTime(eventRow.starts_at) === slot.iso);
+                          const startsEvent = startingEvents.length > 0;
                           const eventStartClass = slotEvents.length === 0 ? '' : startsEvent ? 'event-start' : 'event-continuation';
+                          const eventSlotSpan = Math.max(
+                            1,
+                            ...startingEvents.map((eventRow) => Math.ceil(getEventDurationMinutes(eventRow) / MINUTES_PER_SLOT)),
+                          );
+                          const eventBlockStyle = { '--event-slot-span': eventSlotSpan } as CSSProperties;
 
                           return (
                             <button
@@ -1903,9 +1900,11 @@ export default function App() {
                               ))}
                               {slotEvents.length > 0 && (
                                 <>
-                                  <span aria-hidden="true" className="event-badge">
-                                    {formatEventBadge(slotEvents)}
-                                  </span>
+                                  {startsEvent && (
+                                    <span aria-hidden="true" className="event-block" style={eventBlockStyle}>
+                                      <span className="event-badge">{formatEventBadge(startingEvents)}</span>
+                                    </span>
+                                  )}
                                   <span className="event-tooltip" role="tooltip">
                                     {slotEvents.map((eventRow) => (
                                       <span className="event-tooltip-item" key={eventRow.id ?? `${eventRow.starts_at}-${eventRow.title}`}>
