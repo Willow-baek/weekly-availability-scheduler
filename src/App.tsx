@@ -71,6 +71,8 @@ type EventEditorState = {
 };
 
 type GuideTopic = 'overview' | 'create';
+type QuickFillDayMode = 'all' | 'weekdays' | 'weekend';
+type QuickFillScope = 'week' | 'all-weeks';
 
 const PEOPLE: Person[] = [
   {
@@ -121,6 +123,22 @@ const EVENT_DURATION_OPTIONS = [
 ];
 const EVENT_REPEAT_COUNT_OPTIONS = [2, 3, 4, 6, 8, 12];
 const ALL_USER_NAMES = PEOPLE.map((person) => person.name);
+const QUICK_FILL_TIME_OPTIONS = Array.from({ length: SLOT_COUNT + 1 }, (_, index) => {
+  const totalMinutes = index * MINUTES_PER_SLOT;
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+});
+const QUICK_FILL_DAY_OPTIONS: Array<{ label: string; value: QuickFillDayMode }> = [
+  { label: 'Every day', value: 'all' },
+  { label: 'Weekdays', value: 'weekdays' },
+  { label: 'Weekend', value: 'weekend' },
+];
+
+function timeLabelToMinutes(timeLabel: string) {
+  const [hour = '0', minute = '0'] = timeLabel.split(':');
+  return Number(hour) * 60 + Number(minute);
+}
 
 function getUserNameFromValue(value: string | null) {
   if (!value) return null;
@@ -530,6 +548,9 @@ export default function App() {
   const [undoDraftStack, setUndoDraftStack] = useState<Set<string>[]>([]);
   const [redoDraftStack, setRedoDraftStack] = useState<Set<string>[]>([]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [quickFillStart, setQuickFillStart] = useState('07:00');
+  const [quickFillEnd, setQuickFillEnd] = useState('10:00');
+  const [quickFillDayMode, setQuickFillDayMode] = useState<QuickFillDayMode>('all');
   const [eventRows, setEventRows] = useState<MeetingEventRow[]>([]);
   const [eventErrorMessage, setEventErrorMessage] = useState('');
   const [eventEditor, setEventEditor] = useState<EventEditorState | null>(null);
@@ -567,6 +588,11 @@ export default function App() {
   const slotSet = useMemo(() => new Set(slots.map((slot) => slot.iso)), [slots]);
   const slotByGridKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
   const slotByIso = useMemo(() => new Map(slots.map((slot) => [slot.iso, slot])), [slots]);
+  const allWeekSlots = useMemo(
+    () => Array.from({ length: TOTAL_WEEKS }, (_, targetWeekOffset) => buildSlots(displayTimeZone, targetWeekOffset).slots).flat(),
+    [displayTimeZone],
+  );
+  const slotByIsoAllWeeks = useMemo(() => new Map(allWeekSlots.map((slot) => [slot.iso, slot])), [allWeekSlots]);
   const weekRange = useMemo(
     () => formatWeekRange(slots, displayTimeZone),
     [displayTimeZone, slots],
@@ -894,6 +920,64 @@ export default function App() {
     [remoteSelectedAvailableSlots, selectedUser, slots],
   );
 
+  const applyQuickFill = useCallback(
+    (scope: QuickFillScope) => {
+      if (!selectedUser) return;
+
+      const startMinutes = timeLabelToMinutes(quickFillStart);
+      const endMinutes = timeLabelToMinutes(quickFillEnd);
+
+      if (endMinutes <= startMinutes) return;
+
+      const sourceSlots = scope === 'all-weeks' ? allWeekSlots : slots;
+      const targetSlots = sourceSlots.filter((slot) => {
+        const slotMinutes = slot.slotIndex * MINUTES_PER_SLOT;
+        const isInTimeRange = slotMinutes >= startMinutes && slotMinutes < endMinutes;
+        const isInDayRange =
+          quickFillDayMode === 'all' ||
+          (quickFillDayMode === 'weekdays' && slot.dayIndex < 5) ||
+          (quickFillDayMode === 'weekend' && slot.dayIndex >= 5);
+
+        return isInTimeRange && isInDayRange;
+      });
+
+      if (targetSlots.length === 0) return;
+
+      setDraftAvailableSlots((current) => {
+        const next = new Set(current);
+
+        for (const slot of targetSlots) {
+          next.add(slot.iso);
+        }
+
+        if (areSetsEqual(current, next)) {
+          return current;
+        }
+
+        setUndoDraftStack((history) => trimHistory([...history, new Set(current)]));
+        setRedoDraftStack([]);
+        setExtraClearSlots([]);
+        setDirtySlotTimes((currentDirtySlots) => {
+          const nextDirtySlots = new Set([
+            ...getDirtySlotTimes(next, remoteSelectedAvailableSlots, slots),
+            ...currentDirtySlots,
+          ]);
+
+          for (const slot of targetSlots) {
+            nextDirtySlots.add(slot.iso);
+          }
+
+          return nextDirtySlots;
+        });
+        setSaveState('idle');
+        dragState.current = null;
+
+        return next;
+      });
+    },
+    [allWeekSlots, quickFillDayMode, quickFillEnd, quickFillStart, remoteSelectedAvailableSlots, selectedUser, slots],
+  );
+
   const resetDraft = useCallback(() => {
     const clearedSlots = new Set<string>();
     const wasAlreadyEmpty = areSetsEqual(draftAvailableSlots, clearedSlots);
@@ -1093,7 +1177,7 @@ export default function App() {
     }
 
     for (const row of [...dirtySlotTimes]
-      .map((slotTime) => slotByIso.get(slotTime))
+      .map((slotTime) => slotByIsoAllWeeks.get(slotTime) ?? slotByIso.get(slotTime))
       .filter((slot): slot is Slot => Boolean(slot))
       .map((slot) => ({
         user_name: selectedUser,
@@ -1138,7 +1222,7 @@ export default function App() {
     setUndoDraftStack([]);
     setRedoDraftStack([]);
     setSaveState('saved');
-  }, [dirtySlotTimes, draftAvailableSlots, extraClearSlots, selectedUser, slotByIso]);
+  }, [dirtySlotTimes, draftAvailableSlots, extraClearSlots, selectedUser, slotByIso, slotByIsoAllWeeks]);
 
   const beginAvailabilityDrag = useCallback(
     (slot: Slot) => {
@@ -1550,6 +1634,68 @@ export default function App() {
             </div>
           </section>
 
+          <section className="quick-fill-panel" aria-label="Quick fill availability">
+            <span className="context-label">Quick fill</span>
+            <label>
+              <span>From</span>
+              <select
+                onChange={(event) => setQuickFillStart(event.target.value)}
+                value={quickFillStart}
+              >
+                {QUICK_FILL_TIME_OPTIONS.slice(0, -1).map((timeOption) => (
+                  <option key={timeOption} value={timeOption}>
+                    {timeOption}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>To</span>
+              <select
+                onChange={(event) => setQuickFillEnd(event.target.value)}
+                value={quickFillEnd}
+              >
+                {QUICK_FILL_TIME_OPTIONS.slice(1).map((timeOption) => (
+                  <option key={timeOption} value={timeOption}>
+                    {timeOption}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Days</span>
+              <select
+                onChange={(event) => setQuickFillDayMode(event.target.value as QuickFillDayMode)}
+                value={quickFillDayMode}
+              >
+                {QUICK_FILL_DAY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="quick-fill-actions">
+              <button
+                className="secondary-action"
+                disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
+                onClick={() => applyQuickFill('week')}
+                type="button"
+              >
+                This week
+              </button>
+              <button
+                className="primary-action"
+                disabled={saveState === 'saving' || timeLabelToMinutes(quickFillEnd) <= timeLabelToMinutes(quickFillStart)}
+                onClick={() => applyQuickFill('all-weeks')}
+                type="button"
+              >
+                All weeks
+              </button>
+            </div>
+            <small>Applies to your draft. Press Save to publish.</small>
+          </section>
+
           <section className="scheduler-nav" aria-label="Week navigation">
             <div className="week-pager">
               <button
@@ -1714,6 +1860,17 @@ export default function App() {
                       <div>
                         <strong>Drag selection</strong>
                         <p>{isCompactGuide ? 'Tap Drag, swipe across the slots you want, then turn Drag off so scrolling stays normal.' : 'Press on a slot and drag across nearby slots. The whole dragged range follows the first slot action.'}</p>
+                      </div>
+                    </article>
+                    <article className="guide-card">
+                      <div className="guide-visual quick-visual" aria-hidden="true">
+                        <span>07:00</span>
+                        <span>10:00</span>
+                        <strong>All weeks</strong>
+                      </div>
+                      <div>
+                        <strong>Repeat a regular time</strong>
+                        <p>Use Quick fill for regular availability like 07:00-10:00. Choose This week or All weeks, then press Save.</p>
                       </div>
                     </article>
                     <article className="guide-card">
