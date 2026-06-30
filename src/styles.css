@@ -529,6 +529,12 @@ h1 {
   color: #ffffff;
 }
 
+.touch-paint-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 .primary-action:disabled,
 .secondary-action:disabled {
   cursor: not-allowed;
@@ -981,7 +987,7 @@ h1 {
   .controls-row {
     display: grid;
     gap: 8px;
-    grid-template-columns: 108px minmax(0, 1fr) 62px;
+    grid-template-columns: 122px minmax(0, 1fr) 42px;
     padding: 8px;
   }
 
@@ -1018,6 +1024,8 @@ h1 {
 
   .touch-paint-action {
     display: inline-flex;
+    min-width: 39px;
+    width: 39px;
   }
 
   .person-picker.compact {

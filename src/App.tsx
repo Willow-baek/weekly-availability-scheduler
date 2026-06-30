@@ -7,7 +7,6 @@ import {
   Clock,
   CloudOff,
   MessageSquarePlus,
-  Paintbrush,
   Redo2,
   RefreshCw,
   RotateCcw,
@@ -443,6 +442,11 @@ function formatEventBadge(events: MeetingEventRow[]) {
   if (events.length > 1) return `${getCreatorShortLabel(firstCreator)}+${events.length - 1}`;
 
   return `${getCreatorShortLabel(firstCreator)} ${formatDuration(getEventDurationMinutes(firstEvent))}`;
+}
+
+function withoutEventDuration<T extends { duration_minutes?: number }>(row: T) {
+  const { duration_minutes: _durationMinutes, ...rest } = row;
+  return rest;
 }
 
 export default function App() {
@@ -919,9 +923,24 @@ export default function App() {
     setEventErrorMessage('');
 
     if (supabase) {
-      const { data, error } = eventEditor.id
+      let { data, error } = eventEditor.id
         ? await supabase.from('schedule_events').update(rowToSave).eq('id', eventEditor.id).select('*').single()
         : await supabase.from('schedule_events').insert(rowsToCreate).select('*');
+
+      if (error && error.message.includes('duration_minutes')) {
+        const rowWithoutDuration = withoutEventDuration(rowToSave);
+        const rowsWithoutDuration = rowsToCreate.map(withoutEventDuration);
+        const fallbackResult = eventEditor.id
+          ? await supabase.from('schedule_events').update(rowWithoutDuration).eq('id', eventEditor.id).select('*').single()
+          : await supabase.from('schedule_events').insert(rowsWithoutDuration).select('*');
+
+        data = fallbackResult.data;
+        error = fallbackResult.error;
+
+        if (!error) {
+          setEventErrorMessage('Meeting saved. Run the updated Supabase schema to keep meeting durations.');
+        }
+      }
 
       if (error) {
         setEventSaveState('error');
@@ -1424,7 +1443,7 @@ export default function App() {
                 title={isTouchPaintMode ? 'Touch paint mode on' : 'Touch paint mode off'}
                 type="button"
               >
-                <Paintbrush size={15} />
+                <span className="touch-paint-label">Drag</span>
               </button>
             </div>
 
