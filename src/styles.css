@@ -30,8 +30,29 @@ button {
 }
 
 .app-shell {
+  --viewer-color: #272b2f;
+  --viewer-header-border: #3d4247;
+  --viewer-on-color: #ffffff;
   min-height: 100vh;
   padding: 24px;
+}
+
+.app-shell.theme-blue {
+  --viewer-color: var(--jaiden-color);
+  --viewer-header-border: #006365;
+  --viewer-on-color: #ffffff;
+}
+
+.app-shell.theme-green {
+  --viewer-color: var(--hansol-color);
+  --viewer-header-border: #e5d788;
+  --viewer-on-color: #272b2f;
+}
+
+.app-shell.theme-orange {
+  --viewer-color: var(--jieun-color);
+  --viewer-header-border: #a94220;
+  --viewer-on-color: #ffffff;
 }
 
 .entry-screen {
@@ -430,7 +451,7 @@ h1 {
   align-items: center;
   background: #ffffff;
   border: 1px solid #ded8cf;
-  border-left: 4px solid var(--jaiden-color);
+  border-left: 4px solid var(--viewer-color);
   border-radius: 8px;
   display: flex;
   gap: 16px;
@@ -674,9 +695,9 @@ h1 {
 
 .grid-head {
   align-items: center;
-  background: #272b2f;
-  border-bottom: 1px solid #3d4247;
-  color: #ffffff;
+  background: var(--viewer-color);
+  border-bottom: 1px solid var(--viewer-header-border);
+  color: var(--viewer-on-color);
   display: flex;
   font-size: 0.86rem;
   font-weight: 800;

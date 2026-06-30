@@ -1471,9 +1471,10 @@ export default function App() {
   const eventEditorStartsAtIso = eventEditor
     ? localDateTimeFieldsToIso(eventEditor.date, eventEditor.time, eventEditor.timeZone)
     : null;
+  const appThemeClass = selectedPerson ? `theme-${selectedPerson.color}` : 'theme-neutral';
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${appThemeClass}`}>
       {!selectedUser && (
         <section className="entry-screen" aria-label="Select your name">
           <div className="entry-panel">
