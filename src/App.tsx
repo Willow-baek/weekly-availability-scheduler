@@ -109,6 +109,8 @@ const SLOT_COUNT = 48;
 const MINUTES_PER_SLOT = 30;
 const TOTAL_WEEKS = 16;
 const HOURS_PER_DAY = 24;
+const SLEEP_HOURS_START = 1;
+const SLEEP_HOURS_END = 6;
 const TOUCH_MOVE_CANCEL_DISTANCE = 12;
 const TOUCH_EVENT_DELAY_MS = 780;
 const DEFAULT_EVENT_DURATION_MINUTES = 60;
@@ -138,6 +140,16 @@ const QUICK_FILL_DAY_OPTIONS: Array<{ label: string; value: QuickFillDayMode }> 
 function timeLabelToMinutes(timeLabel: string) {
   const [hour = '0', minute = '0'] = timeLabel.split(':');
   return Number(hour) * 60 + Number(minute);
+}
+
+function getFirstUrl(text?: string | null) {
+  if (!text) return null;
+
+  const match = text.match(/\b(?:https?:\/\/|www\.)[^\s<>"']+/i);
+  const rawUrl = match?.[0]?.replace(/[),.;!?]+$/, '');
+
+  if (!rawUrl) return null;
+  return rawUrl.startsWith('www.') ? `https://${rawUrl}` : rawUrl;
 }
 
 function getUserNameFromValue(value: string | null) {
@@ -569,6 +581,7 @@ export default function App() {
   const [quickFillStart, setQuickFillStart] = useState('07:00');
   const [quickFillEnd, setQuickFillEnd] = useState('10:00');
   const [quickFillDayMode, setQuickFillDayMode] = useState<QuickFillDayMode>('all');
+  const [areSleepHoursCollapsed, setAreSleepHoursCollapsed] = useState(true);
   const [eventRows, setEventRows] = useState<MeetingEventRow[]>([]);
   const [eventErrorMessage, setEventErrorMessage] = useState('');
   const [eventEditor, setEventEditor] = useState<EventEditorState | null>(null);
@@ -682,6 +695,7 @@ export default function App() {
 
     return eventRows.find((eventRow) => new Date(eventRow.starts_at).getTime() >= now) ?? null;
   }, [eventRows]);
+  const nextEventUrl = useMemo(() => getFirstUrl(nextEvent?.note), [nextEvent]);
 
   const unsavedCount = dirtySlotTimes.size + (extraClearSlots.length > 0 ? 1 : 0);
   const syncLabel =
@@ -1515,7 +1529,13 @@ export default function App() {
               <div>
                 <span className="context-label">Next event</span>
                 <strong>{nextEvent.title}</strong>
-                <span>{formatEventDateTime(nextEvent.starts_at, displayTimeZone)}</span>
+                {nextEventUrl ? (
+                  <a className="event-time-link" href={nextEventUrl} rel="noreferrer" target="_blank">
+                    {formatEventDateTime(nextEvent.starts_at, displayTimeZone)}
+                  </a>
+                ) : (
+                  <span>{formatEventDateTime(nextEvent.starts_at, displayTimeZone)}</span>
+                )}
               </div>
               {nextEvent.note && <p>{nextEvent.note}</p>}
             </section>
@@ -1750,15 +1770,57 @@ export default function App() {
             ))}
 
             {Array.from({ length: HOURS_PER_DAY }, (_, hour) => {
+              if (areSleepHoursCollapsed && hour === SLEEP_HOURS_START) {
+                return (
+                  <div className="row-fragment" key="sleep-hours-collapsed">
+                    <div className="time-cell sleep-toggle-cell">
+                      <button
+                        aria-expanded="false"
+                        className="sleep-toggle"
+                        onClick={() => setAreSleepHoursCollapsed(false)}
+                        title="Show 01:00-06:00"
+                        type="button"
+                      >
+                        <span>01-06</span>
+                        <small>show</small>
+                      </button>
+                    </div>
+                    {DAY_LABELS.map((dayLabel) => (
+                      <div aria-hidden="true" className="hour-cell sleep-collapsed-cell" key={`sleep-${dayLabel}`} />
+                    ))}
+                  </div>
+                );
+              }
+
+              if (areSleepHoursCollapsed && hour > SLEEP_HOURS_START && hour < SLEEP_HOURS_END) {
+                return null;
+              }
+
               const timeLabel = `${String(hour).padStart(2, '0')}:00`;
               const periodLabel = hour === 0 ? '오전' : hour === 12 ? '오후' : '';
               const periodClass = hour === 12 ? 'period-start' : '';
+              const sleepToggleClass = !areSleepHoursCollapsed && hour === SLEEP_HOURS_START ? 'sleep-toggle-cell' : '';
 
               return (
                 <div className="row-fragment" key={timeLabel}>
-                  <div className={`time-cell ${periodClass}`}>
-                    <span>{timeLabel}</span>
-                    {periodLabel && <small>{periodLabel}</small>}
+                  <div className={`time-cell ${periodClass} ${sleepToggleClass}`}>
+                    {!areSleepHoursCollapsed && hour === SLEEP_HOURS_START ? (
+                      <button
+                        aria-expanded="true"
+                        className="sleep-toggle"
+                        onClick={() => setAreSleepHoursCollapsed(true)}
+                        title="Hide 01:00-06:00"
+                        type="button"
+                      >
+                        <span>01-06</span>
+                        <small>hide</small>
+                      </button>
+                    ) : (
+                      <>
+                        <span>{timeLabel}</span>
+                        {periodLabel && <small>{periodLabel}</small>}
+                      </>
+                    )}
                   </div>
                   {DAY_LABELS.map((_, dayIndex) => {
                     const halfHourSlots = [hour * 2, hour * 2 + 1].map((slotIndex) => slots[dayIndex * SLOT_COUNT + slotIndex]);
@@ -1925,6 +1987,16 @@ export default function App() {
                         <p>Tap the timezone text next to Viewing as your name to switch the grid between Seoul, Sydney, and Perth time.</p>
                       </div>
                     </article>
+                    <article className="guide-card">
+                      <div className="guide-visual sleep-visual" aria-hidden="true">
+                        <strong>01-06</strong>
+                        <small>show / hide</small>
+                      </div>
+                      <div>
+                        <strong>Fold sleep hours</strong>
+                        <p>01:00-06:00 is folded by default. Tap 01-06 in the time column when you need to view or edit those slots.</p>
+                      </div>
+                    </article>
                   </div>
                 ) : (
                   <div className="guide-create-layout">
@@ -1975,12 +2047,12 @@ export default function App() {
                           <dd>Default is everyone. If someone is not selected, they still see it in gray.</dd>
                         </div>
                         <div>
-                          <dt>Recurring event</dt>
-                          <dd>Repeat weekly and choose how many times to create it.</dd>
+                          <dt>Repeat weekly</dt>
+                          <dd>Turn this on to create the same event for multiple weeks.</dd>
                         </div>
                         <div>
                           <dt>Memo</dt>
-                          <dd>Add a meeting link, agenda, or short note.</dd>
+                          <dd>Add a meeting link, agenda, or short note. If there is a link, the Next event time opens it.</dd>
                         </div>
                         <div>
                           <dt>Add / Save</dt>
@@ -2141,7 +2213,7 @@ export default function App() {
                 </fieldset>
                 {!eventEditor.id && (
                   <fieldset className="repeat-picker">
-                    <legend>Recurring event</legend>
+                    <legend className="sr-only">Repeat</legend>
                     <label className="repeat-toggle">
                       <input
                         checked={eventEditor.repeatWeekly}
