@@ -1680,6 +1680,18 @@ export default function App() {
                       </div>
                     </article>
                     <article className="guide-card">
+                      <div className="guide-visual drag-visual" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                        <small>Drag</small>
+                      </div>
+                      <div>
+                        <strong>Drag selection</strong>
+                        <p>{isCompactGuide ? 'Tap Drag, swipe across the slots you want, then turn Drag off so scrolling stays normal.' : 'Press on a slot and drag across nearby slots. The whole dragged range follows the first slot action.'}</p>
+                      </div>
+                    </article>
+                    <article className="guide-card">
                       <div className="guide-visual event-visual" aria-hidden="true">
                         <span />
                         <span />

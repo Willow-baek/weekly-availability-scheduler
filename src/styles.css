@@ -900,7 +900,7 @@ h1 {
 .guide-card-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .guide-card,
@@ -982,6 +982,50 @@ h1 {
   position: absolute;
   top: 0;
   width: 33%;
+}
+
+.drag-visual {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.drag-visual span {
+  border-right: 1px solid #ebe5dd;
+}
+
+.drag-visual span:first-child {
+  background: var(--jaiden-slot);
+}
+
+.drag-visual span:nth-child(2) {
+  background: var(--hansol-slot);
+}
+
+.drag-visual span:nth-child(3) {
+  background: var(--jieun-slot);
+}
+
+.drag-visual::before {
+  border: 2px solid #272b2f;
+  border-radius: 4px;
+  content: "";
+  inset: 18px 16px;
+  position: absolute;
+  z-index: 1;
+}
+
+.drag-visual small {
+  background: #272b2f;
+  border-radius: 999px;
+  bottom: 8px;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 850;
+  left: 50%;
+  padding: 3px 8px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 2;
 }
 
 .save-visual {
