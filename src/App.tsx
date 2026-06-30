@@ -1874,6 +1874,7 @@ export default function App() {
                           const slotEvents = eventsBySlot.get(slot.iso) ?? [];
                           const isMine = selectedUser ? draftAvailableSlots.has(slot.iso) : false;
                           const mineClass = isMine ? 'mine' : '';
+                          const dirtyClass = dirtySlotTimes.has(slot.iso) ? 'dirty' : '';
                           const emptyClass = availableUsers.length === 0 ? 'empty' : '';
                           const eventClass = slotEvents.length > 0 ? 'has-event' : '';
                           const hasRelevantEvent = slotEvents.some((eventRow) => isEventRelevantToUser(eventRow, selectedUser));
@@ -1884,7 +1885,7 @@ export default function App() {
                           return (
                             <button
                               aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available, ${slotEvents.length} events`}
-                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${eventClass} ${eventMutedClass} ${eventStartClass}`}
+                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${dirtyClass} ${eventClass} ${eventMutedClass} ${eventStartClass}`}
                               data-slot-key={slot.key}
                               key={slot.key}
                               onContextMenu={(event) => handleSlotContextMenu(event, slot, slotEvents)}
