@@ -900,7 +900,7 @@ h1 {
 .guide-card-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .guide-card,
@@ -1003,6 +1003,32 @@ h1 {
   background: #272b2f;
 }
 
+.timezone-visual {
+  align-content: center;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.timezone-visual span {
+  color: #746d65;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.timezone-visual strong {
+  color: #202325;
+  font-size: 1.05rem;
+}
+
+.timezone-visual small {
+  border-bottom: 1px dotted #56514b;
+  color: #56514b;
+  font-size: 0.78rem;
+  width: fit-content;
+}
+
 .guide-create-layout {
   align-items: center;
   grid-template-columns: 210px minmax(0, 1fr);
@@ -1043,6 +1069,34 @@ h1 {
 .guide-steps {
   display: grid;
   gap: 8px;
+}
+
+.guide-field-list {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 6px 0 0;
+}
+
+.guide-field-list div {
+  background: #fbfaf7;
+  border: 1px solid #ebe5dd;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.guide-field-list dt {
+  color: #202325;
+  font-size: 0.8rem;
+  font-weight: 850;
+  margin: 0 0 3px;
+}
+
+.guide-field-list dd {
+  color: #625b53;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: 0;
 }
 
 .event-dialog {
@@ -1334,6 +1388,10 @@ h1 {
 
   .guide-device-card {
     min-height: 150px;
+  }
+
+  .guide-field-list {
+    grid-template-columns: 1fr;
   }
 
   .controls-row {

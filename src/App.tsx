@@ -1700,6 +1700,17 @@ export default function App() {
                         <p>Your availability changes publish after Save. Events publish immediately when added or edited.</p>
                       </div>
                     </article>
+                    <article className="guide-card">
+                      <div className="guide-visual timezone-visual" aria-hidden="true">
+                        <span>Viewing as</span>
+                        <strong>{selectedPerson.name}</strong>
+                        <small>{displayTimeZoneOption.city}, {timezoneLabel}</small>
+                      </div>
+                      <div>
+                        <strong>Change time basis</strong>
+                        <p>Tap the timezone text next to Viewing as your name to switch the grid between Seoul, Sydney, and Perth time.</p>
+                      </div>
+                    </article>
                   </div>
                 ) : (
                   <div className="guide-create-layout">
@@ -1728,6 +1739,44 @@ export default function App() {
                           <p>Click Add or Save. The event syncs immediately for everyone.</p>
                         </>
                       )}
+                      <dl className="guide-field-list">
+                        <div>
+                          <dt>Title</dt>
+                          <dd>Name the event. The default is Meeting.</dd>
+                        </div>
+                        <div>
+                          <dt>Date / Time</dt>
+                          <dd>Pick the exact start date and start time.</dd>
+                        </div>
+                        <div>
+                          <dt>Time basis</dt>
+                          <dd>Choose whether the typed time is Seoul, Sydney, or Perth time.</dd>
+                        </div>
+                        <div>
+                          <dt>Duration</dt>
+                          <dd>Set how long the event lasts, such as 20m, 1h, or 2h.</dd>
+                        </div>
+                        <div>
+                          <dt>Attendees</dt>
+                          <dd>Default is everyone. If someone is not selected, they still see it in gray.</dd>
+                        </div>
+                        <div>
+                          <dt>Recurring event</dt>
+                          <dd>Repeat weekly and choose how many times to create it.</dd>
+                        </div>
+                        <div>
+                          <dt>Memo</dt>
+                          <dd>Add a meeting link, agenda, or short note.</dd>
+                        </div>
+                        <div>
+                          <dt>Add / Save</dt>
+                          <dd>Publishes the event immediately. No extra availability Save is needed.</dd>
+                        </div>
+                        <div>
+                          <dt>Delete / X</dt>
+                          <dd>Delete removes an existing event. X closes the popup without saving.</dd>
+                        </div>
+                      </dl>
                     </div>
                   </div>
                 )}
