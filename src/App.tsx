@@ -166,6 +166,14 @@ function getUserNameFromUrl() {
   return getUserNameFromValue(new URL(window.location.href).searchParams.get('user'));
 }
 
+function getSavedUserName() {
+  try {
+    return getUserNameFromValue(window.localStorage.getItem('availability-user'));
+  } catch {
+    return null;
+  }
+}
+
 function updateUserUrl(userName: UserName) {
   const url = new URL(window.location.href);
 
@@ -554,10 +562,10 @@ function isMissingEventDetailColumnError(message: string) {
 
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
-    return getUserNameFromUrl();
+    return getUserNameFromUrl() ?? getSavedUserName();
   });
   const [displayTimeZone, setDisplayTimeZone] = useState(() => {
-    const initialUser = getUserNameFromUrl();
+    const initialUser = getUserNameFromUrl() ?? getSavedUserName();
     return PEOPLE.find((person) => person.name === initialUser)?.timezone ?? PEOPLE[0].timezone;
   });
   const [isTimeZonePickerOpen, setIsTimeZonePickerOpen] = useState(false);
