@@ -61,6 +61,7 @@ type EventEditorState = {
   title: string;
   note: string;
   durationMinutes: number;
+  attendees: UserName[];
   repeatWeekly: boolean;
   repeatCount: number;
   createdBy?: string;
@@ -113,6 +114,7 @@ const EVENT_DURATION_OPTIONS = [
   { label: '2h', value: 120 },
 ];
 const EVENT_REPEAT_COUNT_OPTIONS = [2, 3, 4, 6, 8, 12];
+const ALL_USER_NAMES = PEOPLE.map((person) => person.name);
 
 function getZonedParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -346,6 +348,7 @@ function normalizeMeetingEventRow(row: MeetingEventRow): MeetingEventRow | null 
     ...row,
     starts_at: startsAt,
     duration_minutes: Number.isFinite(row.duration_minutes) ? row.duration_minutes : DEFAULT_EVENT_DURATION_MINUTES,
+    attendees: normalizeAttendees(row.attendees),
   };
 }
 
@@ -375,6 +378,15 @@ function makeUserSlotSet(userName: UserName | null, slots: Slot[], availability:
   }
 
   return slotTimes;
+}
+
+function normalizeAttendees(attendees?: string[] | null): UserName[] {
+  if (!Array.isArray(attendees) || attendees.length === 0) {
+    return [...ALL_USER_NAMES];
+  }
+
+  const validAttendees = attendees.filter((name): name is UserName => PEOPLE.some((person) => person.name === name));
+  return validAttendees.length > 0 ? validAttendees : [...ALL_USER_NAMES];
 }
 
 function getDirtySlotTimes(draftSlots: Set<string>, remoteSlots: Set<string>, slots: Slot[]) {
@@ -444,9 +456,27 @@ function formatEventBadge(events: MeetingEventRow[]) {
   return `${getCreatorShortLabel(firstCreator)} ${formatDuration(getEventDurationMinutes(firstEvent))}`;
 }
 
-function withoutEventDuration<T extends { duration_minutes?: number }>(row: T) {
-  const { duration_minutes: _durationMinutes, ...rest } = row;
-  return rest;
+function formatAttendeeLabel(eventRow: MeetingEventRow) {
+  const attendees = normalizeAttendees(eventRow.attendees);
+  return attendees.length === PEOPLE.length ? 'All' : attendees.join(', ');
+}
+
+function isEventRelevantToUser(eventRow: MeetingEventRow, userName: UserName | null) {
+  if (!userName) return true;
+  return normalizeAttendees(eventRow.attendees).includes(userName);
+}
+
+function withoutUnsupportedEventColumns<T extends { duration_minutes?: number; attendees?: UserName[] }>(
+  row: T,
+  columns: Array<'duration_minutes' | 'attendees'>,
+) {
+  const next = { ...row };
+
+  for (const column of columns) {
+    delete next[column];
+  }
+
+  return next;
 }
 
 export default function App() {
@@ -880,6 +910,7 @@ export default function App() {
       title: eventRow?.title ?? 'Zoom meeting',
       note: eventRow?.note ?? '',
       durationMinutes: getEventDurationMinutes(eventRow ?? { title: '', starts_at: slot.iso, created_by: selectedUser ?? '' }),
+      attendees: normalizeAttendees(eventRow?.attendees),
       repeatWeekly: false,
       repeatCount: 4,
       createdBy: eventRow?.created_by,
@@ -911,6 +942,7 @@ export default function App() {
       note: note || null,
       starts_at: startsAtIso,
       duration_minutes: eventEditor.durationMinutes,
+      attendees: eventEditor.attendees,
       created_by: eventEditor.createdBy ?? selectedUser,
     };
     const repeatCount = eventEditor.id || !eventEditor.repeatWeekly ? 1 : eventEditor.repeatCount;
@@ -927,18 +959,19 @@ export default function App() {
         ? await supabase.from('schedule_events').update(rowToSave).eq('id', eventEditor.id).select('*').single()
         : await supabase.from('schedule_events').insert(rowsToCreate).select('*');
 
-      if (error && error.message.includes('duration_minutes')) {
-        const rowWithoutDuration = withoutEventDuration(rowToSave);
-        const rowsWithoutDuration = rowsToCreate.map(withoutEventDuration);
+      if (error && (error.message.includes('duration_minutes') || error.message.includes('attendees'))) {
+        const unsupportedColumns: Array<'duration_minutes' | 'attendees'> = ['duration_minutes', 'attendees'];
+        const fallbackRowToSave = withoutUnsupportedEventColumns(rowToSave, unsupportedColumns);
+        const fallbackRowsToCreate = rowsToCreate.map((row) => withoutUnsupportedEventColumns(row, unsupportedColumns));
         const fallbackResult = eventEditor.id
-          ? await supabase.from('schedule_events').update(rowWithoutDuration).eq('id', eventEditor.id).select('*').single()
-          : await supabase.from('schedule_events').insert(rowsWithoutDuration).select('*');
+          ? await supabase.from('schedule_events').update(fallbackRowToSave).eq('id', eventEditor.id).select('*').single()
+          : await supabase.from('schedule_events').insert(fallbackRowsToCreate).select('*');
 
         data = fallbackResult.data;
         error = fallbackResult.error;
 
         if (!error) {
-          setEventErrorMessage('Meeting saved. Run the updated Supabase schema to keep meeting durations.');
+          setEventErrorMessage('Meeting saved. Run the updated Supabase schema to keep meeting durations and attendees.');
         }
       }
 
@@ -947,8 +980,8 @@ export default function App() {
         setEventErrorMessage(
           error.message.includes('schedule_events')
             ? 'Meeting notes need the updated Supabase schema.'
-            : error.message.includes('duration_minutes')
-              ? 'Meeting duration needs the updated Supabase schema.'
+            : error.message.includes('duration_minutes') || error.message.includes('attendees')
+              ? 'Meeting details need the updated Supabase schema.'
             : error.message,
         );
         return;
@@ -1531,13 +1564,15 @@ export default function App() {
                           const mineClass = isMine ? 'mine' : '';
                           const emptyClass = availableUsers.length === 0 ? 'empty' : '';
                           const eventClass = slotEvents.length > 0 ? 'has-event' : '';
+                          const hasRelevantEvent = slotEvents.some((eventRow) => isEventRelevantToUser(eventRow, selectedUser));
+                          const eventMutedClass = slotEvents.length > 0 && !hasRelevantEvent ? 'event-muted' : '';
                           const startsEvent = slotEvents.some((eventRow) => normalizeSlotTime(eventRow.starts_at) === slot.iso);
                           const eventStartClass = slotEvents.length === 0 ? '' : startsEvent ? 'event-start' : 'event-continuation';
 
                           return (
                             <button
                               aria-label={`${DAY_LABELS[dayIndex]} ${slot.localLabel}, ${availableUsers.length} available, ${slotEvents.length} events`}
-                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${eventClass} ${eventStartClass}`}
+                              className={`half-slot slot-cell ${emptyClass} ${mineClass} ${eventClass} ${eventMutedClass} ${eventStartClass}`}
                               data-slot-key={slot.key}
                               key={slot.key}
                               onContextMenu={(event) => handleSlotContextMenu(event, slot, slotEvents)}
@@ -1566,6 +1601,7 @@ export default function App() {
                                           {formatEventDateTime(eventRow.starts_at, displayTimeZone)} · {formatDuration(getEventDurationMinutes(eventRow))} · by{' '}
                                           {eventRow.created_by}
                                         </span>
+                                        <span>Attendees: {formatAttendeeLabel(eventRow)}</span>
                                         {eventRow.note && <em>{eventRow.note}</em>}
                                       </span>
                                     ))}
@@ -1692,6 +1728,37 @@ export default function App() {
                         {durationOption.label}
                       </button>
                     ))}
+                  </div>
+                </fieldset>
+                <fieldset className="attendee-picker">
+                  <legend>Attendees</legend>
+                  <div>
+                    {PEOPLE.map((person) => {
+                      const isSelected = eventEditor.attendees.includes(person.name);
+
+                      return (
+                        <button
+                          aria-pressed={isSelected}
+                          className="attendee-option"
+                          key={person.name}
+                          onClick={() =>
+                            setEventEditor((current) => {
+                              if (!current) return current;
+
+                              const nextAttendees = current.attendees.includes(person.name)
+                                ? current.attendees.filter((name) => name !== person.name)
+                                : [...current.attendees, person.name];
+
+                              return nextAttendees.length > 0 ? { ...current, attendees: nextAttendees } : current;
+                            })
+                          }
+                          type="button"
+                        >
+                          <span aria-hidden="true" className={`attendee-dot ${person.color}`} />
+                          <span>{person.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </fieldset>
                 {!eventEditor.id && (

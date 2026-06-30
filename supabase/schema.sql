@@ -62,6 +62,7 @@ create table if not exists public.schedule_events (
   note text,
   starts_at timestamptz not null,
   duration_minutes integer not null default 60,
+  attendees text[] not null default array['Jaiden', 'Hansol', 'Jieun']::text[],
   created_by text not null check (created_by in ('Jaiden', 'Hansol', 'Jieun')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -69,6 +70,9 @@ create table if not exists public.schedule_events (
 
 alter table public.schedule_events
   add column if not exists duration_minutes integer not null default 60;
+
+alter table public.schedule_events
+  add column if not exists attendees text[] not null default array['Jaiden', 'Hansol', 'Jieun']::text[];
 
 create index if not exists schedule_events_starts_at_idx
   on public.schedule_events (starts_at);
