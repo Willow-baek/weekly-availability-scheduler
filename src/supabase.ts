@@ -22,6 +22,17 @@ export type MeetingEventRow = {
   updated_at?: string;
 };
 
+export type WeeklyTodoRow = {
+  id?: string;
+  user_name: string;
+  week_start: string;
+  title: string;
+  is_done: boolean;
+  is_shared: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 

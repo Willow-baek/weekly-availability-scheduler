@@ -5,20 +5,25 @@ import {
   CircleHelp,
   Clock,
   CloudOff,
+  CalendarDays,
+  ListChecks,
   MessageSquarePlus,
   MonitorSmartphone,
   MousePointerClick,
+  Plus,
   Redo2,
   RefreshCw,
   RotateCcw,
   Save,
+  Share2,
   SlidersHorizontal,
   Smartphone,
+  Trash2,
   Undo2,
   Users,
   X,
 } from 'lucide-react';
-import { AvailabilityRow, MeetingEventRow, isSupabaseConfigured, supabase } from './supabase';
+import { AvailabilityRow, MeetingEventRow, WeeklyTodoRow, isSupabaseConfigured, supabase } from './supabase';
 
 type UserName = 'Jaiden' | 'Hansol' | 'Jieun';
 
@@ -73,6 +78,7 @@ type EventEditorState = {
 
 type GuideTopic = 'overview' | 'create';
 type QuickFillScope = 'week' | 'all-weeks';
+type ActiveView = 'schedule' | 'todos';
 
 const PEOPLE: Person[] = [
   {
@@ -262,6 +268,10 @@ function addLocalDays(year: number, month: number, day: number, days: number) {
   };
 }
 
+function formatLocalDateInput(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function getViewerWeekStart(timeZone: string) {
   const nowParts = getZonedParts(new Date(), timeZone);
   const weekdayIndex = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(nowParts.weekday);
@@ -428,6 +438,30 @@ function normalizeMeetingEventRows(rows: MeetingEventRow[]) {
   return rows.map(normalizeMeetingEventRow).filter((row): row is MeetingEventRow => Boolean(row));
 }
 
+function normalizeWeeklyTodoRow(row: WeeklyTodoRow): WeeklyTodoRow | null {
+  if (!row.id || !row.user_name || !row.week_start) {
+    return null;
+  }
+
+  const userName = getUserNameFromValue(row.user_name);
+  if (!userName) {
+    return null;
+  }
+
+  return {
+    ...row,
+    user_name: userName,
+    title: row.title ?? '',
+    is_done: Boolean(row.is_done),
+    is_shared: Boolean(row.is_shared),
+    week_start: row.week_start.slice(0, 10),
+  };
+}
+
+function normalizeWeeklyTodoRows(rows: WeeklyTodoRow[]) {
+  return rows.map(normalizeWeeklyTodoRow).filter((row): row is WeeklyTodoRow => Boolean(row));
+}
+
 function sortRows(rows: AvailabilityRow[]) {
   return normalizeAvailabilityRows(rows).sort(
     (a, b) => a.slot_time.localeCompare(b.slot_time) || a.user_name.localeCompare(b.user_name),
@@ -436,6 +470,13 @@ function sortRows(rows: AvailabilityRow[]) {
 
 function sortEventRows(rows: MeetingEventRow[]) {
   return normalizeMeetingEventRows(rows).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+}
+
+function sortTodoRows(rows: WeeklyTodoRow[]) {
+  return normalizeWeeklyTodoRows(rows).sort((a, b) => {
+    if (a.is_done !== b.is_done) return a.is_done ? 1 : -1;
+    return (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.title.localeCompare(b.title);
+  });
 }
 
 function makeUserSlotSet(userName: UserName | null, slots: Slot[], availability: Map<string, AvailabilityRow>) {
@@ -560,6 +601,10 @@ function isMissingEventDetailColumnError(message: string) {
   return message.includes('duration_minutes') || message.includes('attendees');
 }
 
+function isMissingTodoTableError(message: string) {
+  return message.includes('weekly_todos') || message.includes("Could not find the table 'public.weekly_todos'");
+}
+
 export default function App() {
   const [selectedUser, setSelectedUser] = useState<UserName | null>(() => {
     return getUserNameFromUrl() ?? getSavedUserName();
@@ -569,6 +614,7 @@ export default function App() {
     return PEOPLE.find((person) => person.name === initialUser)?.timezone ?? PEOPLE[0].timezone;
   });
   const [isTimeZonePickerOpen, setIsTimeZonePickerOpen] = useState(false);
+  const [activeView, setActiveView] = useState<ActiveView>('schedule');
   const [rows, setRows] = useState<AvailabilityRow[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'synced' | 'offline' | 'error'>(
     isSupabaseConfigured ? 'loading' : 'offline',
@@ -590,6 +636,9 @@ export default function App() {
   const [eventErrorMessage, setEventErrorMessage] = useState('');
   const [eventEditor, setEventEditor] = useState<EventEditorState | null>(null);
   const [eventSaveState, setEventSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [todoRows, setTodoRows] = useState<WeeklyTodoRow[]>([]);
+  const [todoErrorMessage, setTodoErrorMessage] = useState('');
+  const [todoSaveState, setTodoSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [guideTopic, setGuideTopic] = useState<GuideTopic>('overview');
   const [isNextEventNoteOpen, setIsNextEventNoteOpen] = useState(false);
@@ -599,6 +648,7 @@ export default function App() {
   const dragState = useRef<DragState | null>(null);
   const draftScope = useRef('');
   const pendingTouch = useRef<PendingTouchState | null>(null);
+  const todoSaveTimers = useRef<Map<string, number>>(new Map());
 
   const selectedPerson = useMemo(
     () => PEOPLE.find((person) => person.name === selectedUser) ?? null,
@@ -634,6 +684,10 @@ export default function App() {
     () => formatWeekRange(slots, displayTimeZone),
     [displayTimeZone, slots],
   );
+  const weekStartDate = useMemo(() => {
+    const firstDay = dayDates[0];
+    return firstDay ? formatLocalDateInput(firstDay.year, firstDay.month, firstDay.day) : '';
+  }, [dayDates]);
   const currentDisplayParts = useMemo(() => getZonedParts(currentTime, displayTimeZone), [currentTime, displayTimeZone]);
   const todayDayIndex = useMemo(
     () =>
@@ -718,6 +772,14 @@ export default function App() {
   }, [eventRows]);
   const nextEventUrl = useMemo(() => getFirstUrl(nextEvent?.note), [nextEvent]);
   const nextEventNote = nextEvent?.note?.trim() ?? '';
+  const myTodos = useMemo(
+    () => sortTodoRows(todoRows.filter((row) => row.user_name === selectedUser && row.week_start === weekStartDate)),
+    [selectedUser, todoRows, weekStartDate],
+  );
+  const sharedTodos = useMemo(
+    () => sortTodoRows(todoRows.filter((row) => row.user_name !== selectedUser && row.is_shared && row.week_start === weekStartDate)),
+    [selectedUser, todoRows, weekStartDate],
+  );
 
   const unsavedCount = dirtySlotTimes.size + (extraClearSlots.length > 0 ? 1 : 0);
   const syncLabel =
@@ -875,6 +937,37 @@ export default function App() {
     void loadEvents();
   }, [loadEvents]);
 
+  const loadTodos = useCallback(async () => {
+    if (!supabase || !weekStartDate) {
+      return;
+    }
+
+    setTodoErrorMessage('');
+
+    const { data, error } = await supabase
+      .from('weekly_todos')
+      .select('*')
+      .eq('week_start', weekStartDate)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      setTodoRows([]);
+      setTodoErrorMessage(
+        isMissingTodoTableError(error.message)
+          ? 'Todos need the updated Supabase schema. Run supabase/schema.sql, then refresh.'
+          : error.message,
+      );
+      return;
+    }
+
+    setTodoRows(sortTodoRows((data ?? []) as WeeklyTodoRow[]));
+    setTodoSaveState('idle');
+  }, [weekStartDate]);
+
+  useEffect(() => {
+    void loadTodos();
+  }, [loadTodos]);
+
   useEffect(() => {
     if (!supabase) {
       return;
@@ -983,6 +1076,202 @@ export default function App() {
       void client.removeChannel(channel);
     };
   }, [eventRange.end, eventRange.start]);
+
+  useEffect(() => {
+    if (!supabase || !weekStartDate) {
+      return undefined;
+    }
+
+    const client = supabase;
+    const channel = supabase
+      .channel('weekly-todos')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'weekly_todos',
+        },
+        (payload) => {
+          const nextRow = payload.new ? normalizeWeeklyTodoRow(payload.new as WeeklyTodoRow) : null;
+          const oldRow = payload.old ? normalizeWeeklyTodoRow(payload.old as WeeklyTodoRow) : null;
+          const relevantWeekStart = nextRow?.week_start ?? oldRow?.week_start;
+
+          if (relevantWeekStart && relevantWeekStart !== weekStartDate) {
+            return;
+          }
+
+          setTodoRows((current) => {
+            if (payload.eventType === 'DELETE' && oldRow?.id) {
+              return current.filter((row) => row.id !== oldRow.id);
+            }
+
+            if (!nextRow?.id) return current;
+
+            const withoutRow = current.filter((row) => row.id !== nextRow.id);
+            return sortTodoRows([...withoutRow, nextRow]);
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [weekStartDate]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of todoSaveTimers.current.values()) {
+        window.clearTimeout(timerId);
+      }
+      todoSaveTimers.current.clear();
+    };
+  }, []);
+
+  const persistTodoPatch = useCallback(
+    async (todoId: string, patch: Partial<Pick<WeeklyTodoRow, 'title' | 'is_done' | 'is_shared'>>) => {
+      if (!selectedUser || !canWriteForCurrentUrl(selectedUser)) return;
+
+      setTodoSaveState('saving');
+      setTodoErrorMessage('');
+
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('weekly_todos')
+          .update(patch)
+          .eq('id', todoId)
+          .eq('user_name', selectedUser)
+          .select('*')
+          .single();
+
+        if (error) {
+          setTodoSaveState('error');
+          setTodoErrorMessage(
+            isMissingTodoTableError(error.message)
+              ? 'Todos need the updated Supabase schema. Run supabase/schema.sql, then refresh.'
+              : error.message,
+          );
+          return;
+        }
+
+        const savedTodo = normalizeWeeklyTodoRow(data as WeeklyTodoRow);
+        if (savedTodo) {
+          setTodoRows((current) => sortTodoRows([...current.filter((row) => row.id !== savedTodo.id), savedTodo]));
+        }
+      }
+
+      setTodoSaveState('saved');
+    },
+    [selectedUser],
+  );
+
+  const addTodo = useCallback(async () => {
+    if (!selectedUser || !weekStartDate || !canWriteForCurrentUrl(selectedUser)) return;
+
+    const now = new Date().toISOString();
+    const optimisticTodo: WeeklyTodoRow = {
+      id: crypto.randomUUID(),
+      user_name: selectedUser,
+      week_start: weekStartDate,
+      title: 'New todo',
+      is_done: false,
+      is_shared: false,
+      created_at: now,
+      updated_at: now,
+    };
+
+    setTodoRows((current) => sortTodoRows([...current, optimisticTodo]));
+    setTodoSaveState('saving');
+    setTodoErrorMessage('');
+
+    if (supabase) {
+      const { data, error } = await supabase.from('weekly_todos').insert(optimisticTodo).select('*').single();
+
+      if (error) {
+        setTodoRows((current) => current.filter((row) => row.id !== optimisticTodo.id));
+        setTodoSaveState('error');
+        setTodoErrorMessage(
+          isMissingTodoTableError(error.message)
+            ? 'Todos need the updated Supabase schema. Run supabase/schema.sql, then refresh.'
+            : error.message,
+        );
+        return;
+      }
+
+      const savedTodo = normalizeWeeklyTodoRow(data as WeeklyTodoRow);
+      if (savedTodo) {
+        setTodoRows((current) => sortTodoRows([...current.filter((row) => row.id !== optimisticTodo.id), savedTodo]));
+      }
+    }
+
+    setTodoSaveState('saved');
+  }, [selectedUser, weekStartDate]);
+
+  const updateTodoTitle = useCallback(
+    (todo: WeeklyTodoRow, title: string) => {
+      if (!todo.id || todo.user_name !== selectedUser || !canWriteForCurrentUrl(todo.user_name as UserName)) return;
+
+      setTodoRows((current) => sortTodoRows(current.map((row) => (row.id === todo.id ? { ...row, title } : row))));
+      setTodoSaveState('saving');
+
+      const existingTimer = todoSaveTimers.current.get(todo.id);
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+      }
+
+      const timerId = window.setTimeout(() => {
+        todoSaveTimers.current.delete(todo.id!);
+        void persistTodoPatch(todo.id!, { title });
+      }, 500);
+      todoSaveTimers.current.set(todo.id, timerId);
+    },
+    [persistTodoPatch, selectedUser],
+  );
+
+  const updateTodoDone = useCallback(
+    (todo: WeeklyTodoRow, isDone: boolean) => {
+      if (!todo.id || todo.user_name !== selectedUser || !canWriteForCurrentUrl(todo.user_name as UserName)) return;
+
+      setTodoRows((current) => sortTodoRows(current.map((row) => (row.id === todo.id ? { ...row, is_done: isDone } : row))));
+      void persistTodoPatch(todo.id, { is_done: isDone });
+    },
+    [persistTodoPatch, selectedUser],
+  );
+
+  const updateTodoShared = useCallback(
+    (todo: WeeklyTodoRow, isShared: boolean) => {
+      if (!todo.id || todo.user_name !== selectedUser || !canWriteForCurrentUrl(todo.user_name as UserName)) return;
+
+      setTodoRows((current) => sortTodoRows(current.map((row) => (row.id === todo.id ? { ...row, is_shared: isShared } : row))));
+      void persistTodoPatch(todo.id, { is_shared: isShared });
+    },
+    [persistTodoPatch, selectedUser],
+  );
+
+  const deleteTodo = useCallback(
+    async (todo: WeeklyTodoRow) => {
+      if (!todo.id || todo.user_name !== selectedUser || !canWriteForCurrentUrl(todo.user_name as UserName)) return;
+
+      setTodoRows((current) => current.filter((row) => row.id !== todo.id));
+      setTodoSaveState('saving');
+      setTodoErrorMessage('');
+
+      if (supabase) {
+        const { error } = await supabase.from('weekly_todos').delete().eq('id', todo.id).eq('user_name', selectedUser);
+
+        if (error) {
+          setTodoRows((current) => sortTodoRows([...current, todo]));
+          setTodoSaveState('error');
+          setTodoErrorMessage(error.message);
+          return;
+        }
+      }
+
+      setTodoSaveState('saved');
+    },
+    [selectedUser],
+  );
 
   const updateDraftSlots = useCallback(
     (targetSlots: Slot[], isAvailable: boolean, userName = selectedUser) => {
@@ -1584,6 +1873,13 @@ export default function App() {
             </div>
           )}
 
+          {todoErrorMessage && (
+            <div className="notice event-warning">
+              <ListChecks size={18} />
+              {todoErrorMessage}
+            </div>
+          )}
+
           {nextEvent && (
             <section className="upcoming-event" aria-label="Upcoming event">
               <div className="upcoming-event-main">
@@ -1612,6 +1908,27 @@ export default function App() {
               {nextEventNote && isNextEventNoteOpen && <p className="upcoming-event-note">{nextEventNote}</p>}
             </section>
           )}
+
+          <section className="view-tabs" aria-label="App view">
+            <button
+              aria-pressed={activeView === 'schedule'}
+              onClick={() => setActiveView('schedule')}
+              title="Schedule"
+              type="button"
+            >
+              <CalendarDays size={15} />
+              <span>Schedule</span>
+            </button>
+            <button
+              aria-pressed={activeView === 'todos'}
+              onClick={() => setActiveView('todos')}
+              title="Todos"
+              type="button"
+            >
+              <ListChecks size={15} />
+              <span>Todos</span>
+            </button>
+          </section>
 
           <section className="context-row" aria-label="Scheduler context">
             <div>
@@ -1658,87 +1975,89 @@ export default function App() {
             </div>
           </section>
 
-          <section className="controls-row" aria-label="Scheduler controls">
-            <div className="control-side left">
-              <button
-                aria-label="Clear current user's week"
-                className="secondary-action icon-action"
-                disabled={saveState === 'saving'}
-                onClick={resetDraft}
-                title="Reset"
-                type="button"
-              >
-                <RotateCcw size={15} />
-              </button>
-              <button
-                aria-label="Undo"
-                className="secondary-action icon-action"
-                disabled={undoDraftStack.length === 0 || saveState === 'saving'}
-                onClick={undoDraft}
-                title="Undo"
-                type="button"
-              >
-                <Undo2 size={15} />
-              </button>
-              <button
-                aria-label="Redo"
-                className="secondary-action icon-action"
-                disabled={redoDraftStack.length === 0 || saveState === 'saving'}
-                onClick={redoDraft}
-                title="Redo"
-                type="button"
-              >
-                <Redo2 size={15} />
-              </button>
-              <button
-                aria-label={isTouchPaintMode ? 'Turn off touch paint mode' : 'Turn on touch paint mode'}
-                aria-pressed={isTouchPaintMode}
-                className="secondary-action icon-action touch-paint-action"
-                disabled={saveState === 'saving'}
-                onClick={() => setIsTouchPaintMode((current) => !current)}
-                title={isTouchPaintMode ? 'Drag mode on' : 'Drag mode'}
-                type="button"
-              >
-                <span className="touch-paint-label">Drag</span>
-              </button>
-            </div>
+          {activeView === 'schedule' && (
+            <>
+              <section className="controls-row" aria-label="Scheduler controls">
+                <div className="control-side left">
+                  <button
+                    aria-label="Clear current user's week"
+                    className="secondary-action icon-action"
+                    disabled={saveState === 'saving'}
+                    onClick={resetDraft}
+                    title="Reset"
+                    type="button"
+                  >
+                    <RotateCcw size={15} />
+                  </button>
+                  <button
+                    aria-label="Undo"
+                    className="secondary-action icon-action"
+                    disabled={undoDraftStack.length === 0 || saveState === 'saving'}
+                    onClick={undoDraft}
+                    title="Undo"
+                    type="button"
+                  >
+                    <Undo2 size={15} />
+                  </button>
+                  <button
+                    aria-label="Redo"
+                    className="secondary-action icon-action"
+                    disabled={redoDraftStack.length === 0 || saveState === 'saving'}
+                    onClick={redoDraft}
+                    title="Redo"
+                    type="button"
+                  >
+                    <Redo2 size={15} />
+                  </button>
+                  <button
+                    aria-label={isTouchPaintMode ? 'Turn off touch paint mode' : 'Turn on touch paint mode'}
+                    aria-pressed={isTouchPaintMode}
+                    className="secondary-action icon-action touch-paint-action"
+                    disabled={saveState === 'saving'}
+                    onClick={() => setIsTouchPaintMode((current) => !current)}
+                    title={isTouchPaintMode ? 'Drag mode on' : 'Drag mode'}
+                    type="button"
+                  >
+                    <span className="touch-paint-label">Drag</span>
+                  </button>
+                </div>
 
-            <button
-              aria-expanded={isQuickFillOpen}
-              className="quick-fill-trigger"
-              onClick={() => setIsQuickFillOpen((current) => !current)}
-              title={isQuickFillOpen ? 'Hide quick fill' : 'Quick fill'}
-              type="button"
-            >
-              <SlidersHorizontal size={15} />
-              <span>Quick fill</span>
-            </button>
+                <button
+                  aria-expanded={isQuickFillOpen}
+                  className="quick-fill-trigger"
+                  onClick={() => setIsQuickFillOpen((current) => !current)}
+                  title={isQuickFillOpen ? 'Hide quick fill' : 'Quick fill'}
+                  type="button"
+                >
+                  <SlidersHorizontal size={15} />
+                  <span>Quick fill</span>
+                </button>
 
-            <div className="control-side right">
-              <span className={unsavedCount > 0 ? 'save-note dirty' : 'save-note'}>
-                {saveState === 'saving'
-                  ? 'Saving...'
-                  : saveState === 'saved'
-                    ? 'Saved'
-                    : unsavedCount > 0
-                      ? `${unsavedCount} unsaved`
-                      : 'No changes'}
-              </span>
-              <button
-                aria-label="Save changes"
-                className="primary-action icon-action"
-                disabled={unsavedCount === 0 || saveState === 'saving'}
-                onClick={saveDraft}
-                title="Save"
-                type="button"
-              >
-                {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
-              </button>
-            </div>
-          </section>
+                <div className="control-side right">
+                  <span className={unsavedCount > 0 ? 'save-note dirty' : 'save-note'}>
+                    {saveState === 'saving'
+                      ? 'Saving...'
+                      : saveState === 'saved'
+                        ? 'Saved'
+                        : unsavedCount > 0
+                          ? `${unsavedCount} unsaved`
+                          : 'No changes'}
+                  </span>
+                  <button
+                    aria-label="Save changes"
+                    className="primary-action icon-action"
+                    disabled={unsavedCount === 0 || saveState === 'saving'}
+                    onClick={saveDraft}
+                    title="Save"
+                    type="button"
+                  >
+                    {saveState === 'saving' ? <RefreshCw size={15} className="spin" /> : <Save size={15} />}
+                  </button>
+                </div>
+              </section>
 
-          {isQuickFillOpen && (
-            <section className="quick-fill-panel" aria-label="Quick fill availability">
+              {isQuickFillOpen && (
+                <section className="quick-fill-panel" aria-label="Quick fill availability">
               <div className="quick-fill-meta">
                 <span className="context-label">Quick fill</span>
                 <small>Draft only. Save to publish.</small>
@@ -1820,7 +2139,9 @@ export default function App() {
                   All weeks
                 </button>
               </div>
-            </section>
+                </section>
+              )}
+            </>
           )}
 
           <section className="scheduler-nav" aria-label="Week navigation">
@@ -1859,15 +2180,16 @@ export default function App() {
             <span className="week-range-label">{weekRange}</span>
           </section>
 
-          <section className={`scheduler ${isTouchPaintMode ? 'paint-mode' : ''}`} aria-label="Weekly availability grid">
-            <div className="grid-head time-head">Time</div>
-            {dayDates.map((day, dayIndex) => (
-              <div className={`grid-head day-head ${dayIndex === todayDayIndex ? 'today' : ''}`} key={day.label}>
-                <span>{day.label}</span>
-              </div>
-            ))}
+          {activeView === 'schedule' && (
+            <section className={`scheduler ${isTouchPaintMode ? 'paint-mode' : ''}`} aria-label="Weekly availability grid">
+              <div className="grid-head time-head">Time</div>
+              {dayDates.map((day, dayIndex) => (
+                <div className={`grid-head day-head ${dayIndex === todayDayIndex ? 'today' : ''}`} key={day.label}>
+                  <span>{day.label}</span>
+                </div>
+              ))}
 
-            {Array.from({ length: HOURS_PER_DAY }, (_, hour) => {
+              {Array.from({ length: HOURS_PER_DAY }, (_, hour) => {
               if (areSleepHoursCollapsed && hour === SLEEP_HOURS_START) {
                 return (
                   <div className="row-fragment" key="sleep-hours-collapsed">
@@ -1999,8 +2321,107 @@ export default function App() {
                   })}
                 </div>
               );
-            })}
-          </section>
+              })}
+            </section>
+          )}
+
+          {activeView === 'todos' && (
+            <section className="todos-view" aria-label="Weekly todos">
+              <article className="todo-card">
+                <div className="todo-card-head">
+                  <div>
+                    <span className="context-label">My todos</span>
+                    <strong>{selectedPerson.name}</strong>
+                  </div>
+                  <div className="todo-head-actions">
+                    <span className={`todo-save-state ${todoSaveState}`}>
+                      {todoSaveState === 'saving' ? 'Saving...' : todoSaveState === 'saved' ? 'Saved' : todoSaveState === 'error' ? 'Error' : ''}
+                    </span>
+                    <button
+                      className="secondary-action todo-add-action"
+                      onClick={() => void addTodo()}
+                      title="Add todo"
+                      type="button"
+                    >
+                      <Plus size={15} />
+                      <span>Add todo</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="todo-list">
+                  {myTodos.length === 0 ? (
+                    <p className="todo-empty">No todos yet.</p>
+                  ) : (
+                    myTodos.map((todo) => (
+                      <div className={`todo-item ${todo.is_done ? 'done' : ''}`} key={todo.id}>
+                        <label className="todo-check" title={todo.is_done ? 'Mark as active' : 'Mark as done'}>
+                          <input
+                            checked={todo.is_done}
+                            onChange={(event) => updateTodoDone(todo, event.target.checked)}
+                            type="checkbox"
+                          />
+                          <span />
+                        </label>
+                        <input
+                          aria-label="Todo title"
+                          className="todo-title-input"
+                          onChange={(event) => updateTodoTitle(todo, event.target.value)}
+                          placeholder="Todo"
+                          value={todo.title}
+                        />
+                        <button
+                          aria-pressed={todo.is_shared}
+                          className="todo-icon-action share"
+                          onClick={() => updateTodoShared(todo, !todo.is_shared)}
+                          title={todo.is_shared ? 'Shared' : 'Share'}
+                          type="button"
+                        >
+                          <Share2 size={14} />
+                        </button>
+                        <button
+                          className="todo-icon-action delete"
+                          onClick={() => void deleteTodo(todo)}
+                          title="Delete"
+                          type="button"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+
+              <article className="todo-card">
+                <div className="todo-card-head">
+                  <div>
+                    <span className="context-label">Shared</span>
+                    <strong>Team todos</strong>
+                  </div>
+                </div>
+                <div className="todo-list">
+                  {sharedTodos.length === 0 ? (
+                    <p className="todo-empty">No shared todos for this week.</p>
+                  ) : (
+                    sharedTodos.map((todo) => {
+                      const author = PEOPLE.find((person) => person.name === todo.user_name);
+
+                      return (
+                        <div className={`todo-item readonly ${todo.is_done ? 'done' : ''}`} key={todo.id}>
+                          <span aria-hidden="true" className={`todo-readonly-check ${todo.is_done ? 'checked' : ''}`} />
+                          <span className="todo-title-text">{todo.title || 'Untitled todo'}</span>
+                          <span className="todo-author">
+                            <span className={`dot ${author?.color ?? ''}`} />
+                            {todo.user_name}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </article>
+            </section>
+          )}
 
           {isGuideOpen && (
             <div className="guide-dialog-backdrop" role="presentation">
@@ -2067,6 +2488,17 @@ export default function App() {
                       <div>
                         <strong>Repeat a regular time</strong>
                         <p>Tap the center Quick fill button for regular availability like 07:00-10:00, then choose the exact weekdays you want. You can still remove a few slots by hand before pressing Save.</p>
+                      </div>
+                    </article>
+                    <article className="guide-card">
+                      <div className="guide-visual todos-visual" aria-hidden="true">
+                        <span />
+                        <span />
+                        <small>Share</small>
+                      </div>
+                      <div>
+                        <strong>Weekly todos</strong>
+                        <p>Open Todos for this week. Your checklist auto-saves, and Share makes an item visible read-only for teammates.</p>
                       </div>
                     </article>
                     <article className="guide-card">

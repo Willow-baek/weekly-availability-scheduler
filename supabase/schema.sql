@@ -119,3 +119,60 @@ exception
   when duplicate_object then null;
 end;
 $$;
+
+create table if not exists public.weekly_todos (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null check (user_name in ('Jaiden', 'Hansol', 'Jieun')),
+  week_start date not null,
+  title text not null default '',
+  is_done boolean not null default false,
+  is_shared boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists weekly_todos_week_start_idx
+  on public.weekly_todos (week_start);
+
+create index if not exists weekly_todos_user_week_idx
+  on public.weekly_todos (user_name, week_start);
+
+drop trigger if exists weekly_todos_set_updated_at on public.weekly_todos;
+create trigger weekly_todos_set_updated_at
+before update on public.weekly_todos
+for each row execute function public.set_updated_at();
+
+alter table public.weekly_todos enable row level security;
+
+drop policy if exists "Weekly todos are readable by anyone" on public.weekly_todos;
+create policy "Weekly todos are readable by anyone"
+on public.weekly_todos for select
+to anon
+using (true);
+
+drop policy if exists "Weekly todos are insertable by anyone" on public.weekly_todos;
+create policy "Weekly todos are insertable by anyone"
+on public.weekly_todos for insert
+to anon
+with check (true);
+
+drop policy if exists "Weekly todos are updateable by anyone" on public.weekly_todos;
+create policy "Weekly todos are updateable by anyone"
+on public.weekly_todos for update
+to anon
+using (true)
+with check (true);
+
+drop policy if exists "Weekly todos are deleteable by anyone" on public.weekly_todos;
+create policy "Weekly todos are deleteable by anyone"
+on public.weekly_todos for delete
+to anon
+using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.weekly_todos;
+exception
+  when duplicate_object then null;
+end;
+$$;
