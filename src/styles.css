@@ -1136,6 +1136,28 @@ h1 {
   padding: 14px;
 }
 
+.team-todo-cards {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.team-todo-card {
+  border-left: 4px solid #ded8cf;
+}
+
+.team-todo-card.blue {
+  border-left-color: var(--jaiden-color);
+}
+
+.team-todo-card.green {
+  border-left-color: var(--hansol-color);
+}
+
+.team-todo-card.orange {
+  border-left-color: var(--jieun-color);
+}
+
 .todo-card-head {
   align-items: center;
   display: flex;

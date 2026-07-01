@@ -780,6 +780,14 @@ export default function App() {
     () => sortTodoRows(todoRows.filter((row) => row.user_name !== selectedUser && row.is_shared && row.week_start === weekStartDate)),
     [selectedUser, todoRows, weekStartDate],
   );
+  const sharedTodoGroups = useMemo(
+    () =>
+      PEOPLE.filter((person) => person.name !== selectedUser).map((person) => ({
+        person,
+        todos: sharedTodos.filter((todo) => todo.user_name === person.name),
+      })),
+    [selectedUser, sharedTodos],
+  );
 
   const unsavedCount = dirtySlotTimes.size + (extraClearSlots.length > 0 ? 1 : 0);
   const syncLabel =
@@ -2392,34 +2400,34 @@ export default function App() {
                 </div>
               </article>
 
-              <article className="todo-card">
-                <div className="todo-card-head">
-                  <div>
-                    <span className="context-label">Shared</span>
-                    <strong>Team todos</strong>
-                  </div>
-                </div>
-                <div className="todo-list">
-                  {sharedTodos.length === 0 ? (
-                    <p className="todo-empty">No shared todos for this week.</p>
-                  ) : (
-                    sharedTodos.map((todo) => {
-                      const author = PEOPLE.find((person) => person.name === todo.user_name);
-
-                      return (
-                        <div className={`todo-item readonly ${todo.is_done ? 'done' : ''}`} key={todo.id}>
-                          <span aria-hidden="true" className={`todo-readonly-check ${todo.is_done ? 'checked' : ''}`} />
-                          <span className="todo-title-text">{todo.title || 'Untitled todo'}</span>
-                          <span className="todo-author">
-                            <span className={`dot ${author?.color ?? ''}`} />
-                            {todo.user_name}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </article>
+              <section className="team-todo-cards" aria-label="Shared team todos">
+                {sharedTodoGroups.map(({ person, todos }) => (
+                  <article className={`todo-card team-todo-card ${person.color}`} key={person.name}>
+                    <div className="todo-card-head">
+                      <div>
+                        <span className="context-label">Shared</span>
+                        <strong>{person.name}'s todos</strong>
+                      </div>
+                    </div>
+                    <div className="todo-list">
+                      {todos.length === 0 ? (
+                        <p className="todo-empty">No shared todos.</p>
+                      ) : (
+                        todos.map((todo) => (
+                          <div className={`todo-item readonly ${todo.is_done ? 'done' : ''}`} key={todo.id}>
+                            <span aria-hidden="true" className={`todo-readonly-check ${todo.is_done ? 'checked' : ''}`} />
+                            <span className="todo-title-text">{todo.title || 'Untitled todo'}</span>
+                            <span className="todo-author">
+                              <span className={`dot ${person.color}`} />
+                              {person.name}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </section>
             </section>
           )}
 
@@ -2498,7 +2506,8 @@ export default function App() {
                       </div>
                       <div>
                         <strong>Weekly todos</strong>
-                        <p>Open Todos for this week. Your checklist auto-saves, and Share makes an item visible read-only for teammates.</p>
+                        <p>Open Todos for this week. Your checklist auto-saves as you type, check, share, or delete.</p>
+                        <p>Only items with Share turned on appear for teammates, and they see them in separate read-only cards by person.</p>
                       </div>
                     </article>
                     <article className="guide-card">
